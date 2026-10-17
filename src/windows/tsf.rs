@@ -366,21 +366,21 @@ unsafe fn create_text_icon(text: &str) -> Result<HICON> {
     let hbm_mask = CreateBitmap(width, height, 1, 1, None);
     if hbm_color.is_invalid() || hbm_mask.is_invalid() {
         if !hbm_color.is_invalid() {
-            DeleteObject(hbm_color);
+            let _ = DeleteObject(hbm_color);
         }
         if !hbm_mask.is_invalid() {
-            DeleteObject(hbm_mask);
+            let _ = DeleteObject(hbm_mask);
         }
-        DeleteDC(hdc_mem);
+        let _ = DeleteDC(hdc_mem);
         ReleaseDC(hwnd, hdc_screen);
         return Err(Error::from_win32());
     }
 
     let hdc_mask = CreateCompatibleDC(hdc_screen);
     if hdc_mask.is_invalid() {
-        DeleteObject(hbm_color);
-        DeleteObject(hbm_mask);
-        DeleteDC(hdc_mem);
+        let _ = DeleteObject(hbm_color);
+        let _ = DeleteObject(hbm_mask);
+        let _ = DeleteDC(hdc_mem);
         ReleaseDC(hwnd, hdc_screen);
         return Err(Error::from_win32());
     }
@@ -389,7 +389,7 @@ unsafe fn create_text_icon(text: &str) -> Result<HICON> {
     let old_mask = SelectObject(hdc_mask, hbm_mask);
     // A white AND mask makes the background transparent; black glyph pixels
     // make only the text itself visible in the resulting icon.
-    PatBlt(hdc_mask, 0, 0, width, height, WHITENESS);
+    let _ = PatBlt(hdc_mask, 0, 0, width, height, WHITENESS);
     SetBkMode(hdc_mem, TRANSPARENT);
     SetTextColor(hdc_mem, COLORREF(0x00FFFFFF));
     SetBkMode(hdc_mask, TRANSPARENT);
@@ -443,11 +443,11 @@ unsafe fn create_text_icon(text: &str) -> Result<HICON> {
 
     SelectObject(hdc_mem, old_font);
     SelectObject(hdc_mask, old_font_mask);
-    DeleteObject(font);
+    let _ = DeleteObject(font);
     SelectObject(hdc_mem, old_bm);
     SelectObject(hdc_mask, old_mask);
-    DeleteDC(hdc_mask);
-    DeleteDC(hdc_mem);
+    let _ = DeleteDC(hdc_mask);
+    let _ = DeleteDC(hdc_mem);
     ReleaseDC(hwnd, hdc_screen);
 
     let icon_info = ICONINFO {
@@ -458,8 +458,8 @@ unsafe fn create_text_icon(text: &str) -> Result<HICON> {
         hbmColor: hbm_color,
     };
     let result = CreateIconIndirect(&icon_info);
-    DeleteObject(hbm_color);
-    DeleteObject(hbm_mask);
+    let _ = DeleteObject(hbm_color);
+    let _ = DeleteObject(hbm_mask);
     result
 }
 
