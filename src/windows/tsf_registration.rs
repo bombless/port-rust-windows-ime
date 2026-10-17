@@ -221,6 +221,10 @@ unsafe fn unregister_tip_inner() -> HRESULT {
 
 /// Register the TIP with COM initialized on this thread. RPC_E_CHANGED_MODE is
 /// accepted because callers may already have initialized COM in another mode.
+///
+/// # Safety
+/// The caller must execute on a thread where COM APIs are valid and must not
+/// call this concurrently for the same CLSID from multiple registration flows.
 pub unsafe fn register_tip() -> HRESULT {
     let init = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED);
     if init.0 < 0 && init.0 != 0x80010106u32 as i32 {
@@ -234,6 +238,10 @@ pub unsafe fn register_tip() -> HRESULT {
 }
 
 /// Unregister language profiles and TSF categories before removing the CLSID.
+///
+/// # Safety
+/// The caller must execute on a thread where COM APIs are valid and must not
+/// race another registration or unregistration operation for this CLSID.
 pub unsafe fn unregister_tip() -> HRESULT {
     let init = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED);
     if init.0 < 0 && init.0 != 0x80010106u32 as i32 {
