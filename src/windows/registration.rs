@@ -1,8 +1,8 @@
-//! Minimal COM registry registration for the in-process TSF DLL.
+//! COM registry registration for the in-process TSF DLL.
 //!
-//! This registers the CLSID and Apartment threading model only. TSF language
-//! profile/category registration is a separate step and is not implemented yet.
-
+//! Registers the CLSID and Apartment threading model, then registers the TSF
+//! language profile and categories through the TSF registration module. Runtime
+//! behavior still requires validation on a real Windows TSF host.
 use std::{
     ffi::c_void,
     panic::{catch_unwind, AssertUnwindSafe},
@@ -158,7 +158,7 @@ unsafe fn register_server() -> HRESULT {
         return result;
     }
 
-    // COM registration must exist before TSF registers the language profile.
+    // Register the COM class before registering its TSF profile and categories.
     let result = super::tsf_registration::register_tip();
     if result.is_err() {
         let _ = unregister_com_key();
@@ -186,9 +186,6 @@ unsafe fn unregister_server() -> HRESULT {
 }
 
 /// Registers the COM CLSID, in-process server path, TSF language profile, and categories.
-///
-/// This registration path is compile-tested by CI but has not yet been smoke-tested
-/// against the Windows TSF implementation on a real host.
 ///
 /// # Safety
 /// Called by COM with the standard zero-argument DLL export ABI.
