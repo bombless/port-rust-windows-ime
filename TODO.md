@@ -8,26 +8,27 @@
 - [x] 添加初步输入状态机：`src/engine.rs`，包含按键/候选/快照类型、预测按键结果、基础组合输入与选择逻辑、少量内置示例词和单元测试。
 - [x] 添加 Windows 模块骨架：`src/windows/mod.rs`、`src/windows/tsf.rs`。
 - [x] 添加项目 README。
-- [ ] 上述代码尚未确认通过编译、测试或 Windows 实机验证；不要把骨架视为可用的 TSF 输入法。
+- [ ] 上述代码尚未全部确认通过编译、测试或 Windows 实机验证；不要把骨架视为可用的 TSF 输入法。
 
-## 已完成的本轮检查
+## 本轮实际核查与改动（2026-10-17）
 
-- [x] 核对 Go 源仓库的 `go.mod`、README 与 `tip/` 目录清单；确认核心文件包括 `tip/main.go`、`tip/strategy.go`、`tip/composition.go`、`tip/candidate_ui.go`、`tip/candidate_presenter.go` 及 `tip/pinyin_simp.dict.yaml`（约 1.27 MB）。完整迁移映射仍未完成。
-- [x] 修正 `Engine::test_key` 与 `Engine::handle_key` 的按键预测不一致：组合期间非 ASCII/非字母字符和数字 `0`/越界数字不再被错误预测为消费；根据 Go `reduceIME` 进一步对齐空候选时的方向键/数字键处理，以及 Enter/Space 提交原始组合串的行为。
-- [x] 扩充纯 Rust 单元测试，覆盖预测无副作用、预测与处理一致性、数字候选选择、退格/取消及实例状态隔离。
-- [ ] 当前修改尚未由本会话中的本地 Rust 工具链实际编译或执行；以 CI 结果为准。
+- [x] 读取开发分支 `feat/tsf-com-server` 上的 `TODO.md`、`README.md`、`Cargo.toml`、`src/lib.rs`、`src/engine.rs`、`src/windows/tsf.rs` 和 CI workflow；确认当前 TSF 仍是生命周期占位模型，尚无 COM 类工厂、DLL 导出、真实 TSF 接口或 edit session。
+- [x] 从 Go 源仓库 `tip/main.go` 的 C 定义与 Go 声明交叉核对身份：CLSID `C2D4A9B1-7F63-4A85-9E20-4B6D8C1F3072`，语言 profile GUID `E731B5D4-2A90-4F68-AC13-7D5E9B2046F1`；Rust 常量与之匹配。Go 源码还明确使用 `ITfTextInputProcessor`、`ITfTextInputProcessorEx`、`ITfKeyEventSink`，注册线程模型为 `Apartment`。
+- [x] 为两个 GUID 增加回归测试。
+- [x] 修正 CI 的 push 分支过滤器，将 `feat/**` 加入，确保开发分支 push 也触发 workflow（此前只有 `main` 和 `fix/**`）。
+- [ ] CI 结果待观察；本轮尚未声称本地 cargo 命令或 Windows 实机验证成功。
 
 ## P0 — 先建立正确的源代码对应关系
 
 - [ ] 完整检查 Go 源仓库的目录树、README、`go.mod`、所有 TSF/COM 实现、输入状态机、候选 UI、词典与测试。
 - [ ] 建立 Go 文件/类型/行为到 Rust 文件/模块的迁移映射，避免只根据 README 或局部文件猜测行为。
-- [ ] 对照源仓库核对 COM CLSID、接口、注册信息、线程模型、激活流程及资源清理要求；不要臆造 GUID 或接口签名。
+- [ ] 继续核对 COM 接口、注册信息、线程模型、激活流程及资源清理要求；不要臆造 GUID 或接口签名。
 - [ ] 确认目标支持的 Windows 版本、CPU 架构及构建/注册方式，并在 README 记录。
 
 ## P0 — 实现真正可加载的 TSF COM server
 
 - [ ] 实现正确 ABI 的 COM 类工厂与 DLL 导出（至少按 TSF 需要实现 `DllGetClassObject`、`DllCanUnloadNow`；确认是否需要并实现注册/注销导出）。
-- [ ] 实现所需 TSF COM 接口，至少逐项核对并完成 `ITfTextInputProcessor`、`ITfKeyEventSink` 及相关接口；使用正确的 vtable/ABI、HRESULT、引用计数和对象生命周期。
+- [ ] 实现所需 TSF COM 接口，至少逐项核对并完成 `ITfTextInputProcessor`、`ITfKeyEventSink` 及必要接口；使用正确的 vtable/ABI、HRESULT、引用计数和对象生命周期。
 - [ ] 实现 TSF 激活/停用、线程管理器连接/断开、键盘事件 sink 的 advise/unadvise，并正确处理失败路径和重复调用。
 - [ ] 实现 `ITfKeyEventSink` 的按键测试与处理：测试阶段不修改输入状态；处理阶段才消费按键并推进状态。
 - [ ] 通过 TSF edit sessions 在正确的上下文中读写组合文本、提交文本、删除文本；覆盖同步/异步 session 的失败处理及文档锁要求。
@@ -54,8 +55,8 @@
 ## P1 — 构建、CI 和发布
 
 - [ ] 本地/CI 执行 `cargo fmt --check`、`cargo test`、`cargo clippy --all-targets --all-features -- -D warnings`，修复全部失败。
-- [ ] 增加 Windows CI，构建目标架构的 DLL；明确并记录 MSVC toolchain、Windows SDK 和 Rust target 要求。
-- [ ] 验证生成物确实是可加载的 DLL，并核对导出符号、依赖项和目标架构。
+- [x] CI 配置包含 Ubuntu 格式/测试/lint job 和 Windows MSVC x64 build job；push 触发器已覆盖 `feat/**`。
+- [ ] Windows CI 构建通过后，核实生成物确实是可加载的 DLL，并核对导出符号、依赖项和目标架构。
 - [ ] 增加最小安装/注册、卸载/注销脚本或明确步骤；脚本需可重复执行，并谨慎处理管理员权限和注册表。
 - [ ] 更新 README：功能、限制、构建、安装/卸载、调试、日志、常见故障及已验证环境。
 
@@ -73,10 +74,3 @@
 - [ ] COM/TSF 接口、注册与 DLL 生命周期真实可用，而不是占位结构体或模拟适配器。
 - [ ] 自动化测试和 Windows 构建通过，且至少完成一次 Windows 实机注册、激活和实际输入验收。
 - [ ] 文档准确区分已实现、已测试、已在实机验证和仍存在的限制。
-
-## 下一上下文建议从这里开始
-
-1. 先检查本仓库当前所有文件和源 Go 仓库完整目录，不要假定现有骨架正确。
-2. 先跑格式检查、测试和 Windows target build，记录真实报错与依赖问题。
-3. 优先完成最小、正确的 COM/TSF DLL 生命周期和注册链路，再逐步接入引擎与候选 UI。
-4. 每次完成一个可验证的纵向切片就提交代码并更新本 TODO；避免把接口占位或伪实现标记为完成。
