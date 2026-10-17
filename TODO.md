@@ -17,7 +17,8 @@
 - [x] 为两个 GUID 增加回归测试。
 - [x] 修正 CI 的 push 分支过滤器，将 `feat/**` 加入，确保开发分支 push 也触发 workflow（此前只有 `main` 和 `fix/**`）。
 - [x] GitHub Actions workflow run #23（提交 `73a5601343d1b4b178d41aa07fb8314b52bc26c6`）已完成且结论为 success；该 workflow 包含 Ubuntu 格式/测试/lint 和 Windows MSVC x64 build job。该结果证明 CI 命令通过，不等同于在真实 TSF 宿主中注册、激活或输入验证。
-- [ ] 本轮未运行本地 cargo 命令，未进行 Windows 实机 TSF 宿主验收。
+- [x] 新增 COM 实现后观察到 GitHub Actions run #37（当时 head `6372ac9`）在 Linux 与 Windows 两个 job 均仅因 `cargo fmt --check` 的格式差异失败；随后按该 diff 修正了排序和换行。
+- [ ] 修正后的最新 head 尚无可确认的完整 CI 结果；当前 Windows agent 未安装 Cargo，因此无法在本地重跑。未进行 Windows 实机 TSF 宿主验收。
 
 ## P0 — 先建立正确的源代码对应关系
 
