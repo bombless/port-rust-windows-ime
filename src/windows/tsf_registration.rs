@@ -65,7 +65,7 @@ type AddLanguageProfileFn = unsafe extern "system" fn(
     *mut c_void, *const GUID, u16, *const GUID, *const u16, u32, *const u16, u32, u16,
 ) -> HRESULT;
 type RemoveLanguageProfileFn =
-    unsafe extern "system" fn(*mut c_void, *const GUID, u16, *const GUID);
+    unsafe extern "system" fn(*mut c_void, *const GUID, u16, *const GUID) -> HRESULT;
 type CategoryFn =
     unsafe extern "system" fn(*mut c_void, *const GUID, *const GUID, *const GUID) -> HRESULT;
 
@@ -129,8 +129,18 @@ unsafe fn register_tip_inner() -> HRESULT {
     }
 
     // Clean up profiles left under older language IDs by previous builds.
-    remove_profile(profiles.0, &CLSID_PORT_RUST_IME, 0x0409, &GUID_PORT_RUST_IME_PROFILE);
-    remove_profile(profiles.0, &CLSID_PORT_RUST_IME, 0x0411, &GUID_PORT_RUST_IME_PROFILE);
+    let _ = remove_profile(
+        profiles.0,
+        &CLSID_PORT_RUST_IME,
+        0x0409,
+        &GUID_PORT_RUST_IME_PROFILE,
+    );
+    let _ = remove_profile(
+        profiles.0,
+        &CLSID_PORT_RUST_IME,
+        0x0411,
+        &GUID_PORT_RUST_IME_PROFILE,
+    );
 
     let name: Vec<u16> = "Go Chinese Input Method".encode_utf16().collect();
     hr = add_profile(
