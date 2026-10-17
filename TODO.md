@@ -19,7 +19,7 @@
 - [x] GitHub Actions workflow run #23（提交 `73a5601343d1b4b178d41aa07fb8314b52bc26c6`）已完成且结论为 success；该 workflow 包含 Ubuntu 格式/测试/lint 和 Windows MSVC x64 build job。该结果证明 CI 命令通过，不等同于在真实 TSF 宿主中注册、激活或输入验证。
 - [x] GitHub Actions run #55（提交 `43396db`）的 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build 全部通过。
 - [x] GitHub Actions run #69（提交 `c581bc4`）再次通过 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build；该版本已包含 key-sink 全部透传、避免跨 TSF 调用持锁、恢复 DLL 导出等修正。
-- [ ] 新提交 `38b501f` 增加 edit-session 请求路径；其 Windows CI 编译结果尚待 Actions 实际运行确认。
+- [x] 提交 `d95d758` / `1a44c74` / `6136099` 将引擎按键预测和正式处理接入 key sink，并让 edit session 在 TSF edit cookie 下通过 `ITfContext::GetSelection` 与 `ITfRange::SetText` 写入组合文本；提交/取消后清除跟踪的组合范围。Windows CI run #84 已排队，编译结果尚未确认。
 - [ ] 当前 Windows agent 未安装 Cargo，无法在本地重跑。未进行 Windows 实机 TSF 宿主验收。
 
 ## P0 — 先建立正确的源代码对应关系
@@ -33,13 +33,13 @@
 
 - [x] 增加 `IClassFactory`、`DllGetClassObject`、`DllCanUnloadNow` 的第一版实现；通过 `#[implement]` 生成 COM vtable，并跟踪活动对象和 `LockServer` 计数（run #55/#69 Windows CI 通过）。
 - [ ] 补充 `DllRegisterServer` / `DllUnregisterServer`、注册表与 TSF profile 注册/注销导出。
-- [x] 增加 `ITfTextInputProcessor`、`ITfKeyEventSink` 的第一版 windows-rs `#[implement]` 实现；在 edit sessions 尚未就绪前，键盘回调明确返回未消费，避免吞掉用户输入。
+- [x] 增加 `ITfTextInputProcessor`、`ITfKeyEventSink` 的第一版 windows-rs `#[implement]` 实现；key sink 现在用 `Engine::test_key` 做无副作用预测，并在 `OnKeyDown` 调用 `handle_key`。
 - [ ] 对 COM 接口实现做编译和 ABI 审核，完善 `ITfTextInputProcessorEx` 兼容性。
 - [x] 激活时 `AdviseKeyEventSink`、停用时 `UnadviseKeyEventSink`；避免持有服务状态锁跨越可能重入的 TSF COM 调用，撤销失败时保留 manager/active 状态，允许再次尝试。
 - [ ] 完善重复激活/并发调用策略，并在真实 TSF 宿主验证连接与撤销。
 - [x] 增加 `ITfEditSession` COM 对象，并在 `OnKeyDown` 中通过 `ITfContext::RequestEditSession(TF_ES_SYNC | TF_ES_READWRITE)` 请求 TSF 写锁；目前仅验证调用链设计，未声称已能编辑文本。
-- [ ] 实现 `ITfKeyEventSink` 的按键测试与处理：测试阶段不修改输入状态；处理阶段才消费按键并推进状态。
-- [x] 增加第一版 `ITfEditSession` 与 `ITfContext::RequestEditSession` 同步写锁请求路径；当前 `DoEditSession` 尚不修改文本，按键仍明确透传。需要继续实现插入/替换/提交/取消并覆盖锁失败。
+- [x] 接通 `ITfKeyEventSink` 的按键测试与处理：测试阶段只调用 `Engine::test_key`；处理阶段调用 `handle_key` 并按结果请求 TSF edit session。仍需增加 COM/TSF 级别测试，确认请求失败时引擎状态回滚。
+- [x] 增加 `ITfEditSession` 与 `ITfContext::RequestEditSession` 同步写锁路径；`DoEditSession` 使用有效 edit cookie 获取选区并调用 `ITfRange::SetText`，更新组合文本，提交或取消时清理范围状态。仍需 Windows 编译核实、验证 range/selection 实际行为，并覆盖锁失败与状态回滚。
 - [ ] 完成 TSF profile、语言/输入法 profile、CLSID、注册表键值、位数匹配、安装/卸载和注册/注销说明。
 - [ ] 检查 panic 不得越过 FFI/COM 边界；处理空指针、无效参数、HRESULT 与所有 unsafe 代码的安全约束。
 - [ ] 让 COM 对象、线程管理器、sink、窗口与资源在停用/卸载时可重复且安全地清理。
