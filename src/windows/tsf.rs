@@ -231,10 +231,12 @@ impl ITfLangBarItem_Impl for ModeLangBarItem_Impl {
         if info.is_null() {
             return Err(Error::from(E_POINTER));
         }
-        let mut value = TF_LANGBARITEMINFO::default();
-        value.clsidService = CLSID_PORT_RUST_IME;
-        value.guidItem = GUID_LBI_INPUTMODE;
-        value.dwStyle = TF_LBI_STYLE_BTN_BUTTON | TF_LBI_STYLE_SHOWNINTRAY;
+        let mut value = TF_LANGBARITEMINFO {
+            clsidService: CLSID_PORT_RUST_IME,
+            guidItem: GUID_LBI_INPUTMODE,
+            dwStyle: TF_LBI_STYLE_BTN_BUTTON | TF_LBI_STYLE_SHOWNINTRAY,
+            ..Default::default()
+        };
         let description: Vec<u16> = "Rust Chinese Input Method".encode_utf16().collect();
         for (dst, src) in value
             .szDescription
