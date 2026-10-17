@@ -180,6 +180,7 @@ struct EditSession {
     context: ITfContext,
     state: std::sync::Arc<Mutex<ServiceState>>,
     text: Option<String>,
+    keep_composition: bool,
 }
 
 impl ITfEditSession_Impl for EditSession_Impl {
@@ -205,7 +206,7 @@ impl ITfEditSession_Impl for EditSession_Impl {
         unsafe {
             range.SetText(edit_cookie, 0, PCWSTR(wide.as_ptr()), wide.len() as i32)?;
         }
-        if self.text.is_some() {
+        if self.keep_composition {
             state.composition_range = Some(range);
         } else {
             state.composition_range = None;
@@ -255,18 +256,20 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
             let outcome = state.engine.handle_key(key);
             (state.client_id, outcome)
         };
-        let (text, consumed) = match outcome {
-            KeyOutcome::Update(text) | KeyOutcome::Commit(text) => (Some(text), true),
-            KeyOutcome::Cancel => (Some(String::new()), true),
-            KeyOutcome::Consumed => (None, true),
-            KeyOutcome::PassThrough => (None, false),
+        let (text, keep_composition, consumed) = match outcome {
+            KeyOutcome::Update(text) => (Some(text), true, true),
+            KeyOutcome::Commit(text) => (Some(text), false, true),
+            KeyOutcome::Cancel => (Some(String::new()), false, true),
+            KeyOutcome::Consumed => (None, false, true),
+            KeyOutcome::PassThrough => (None, false, false),
         };
         if let Some(text) = text {
             if client_id == 0 { return Ok(BOOL(0)); }
             let session: ITfEditSession = EditSession {
                 context: context.clone(),
                 state: self.state.clone(),
-                text: if text.is_empty() { None } else { Some(text) },
+                text: Some(text),
+                keep_composition,
             }.into();
             let mut session_result = S_OK;
             unsafe {
