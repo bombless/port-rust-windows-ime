@@ -8,11 +8,11 @@ use windows::{
     core::{w, PCWSTR},
     Win32::{
         Foundation::{HWND, POINT},
+        Graphics::Gdi::ClientToScreen,
         UI::WindowsAndMessaging::{
-            ClientToScreen, CreateWindowExW, GetCursorPos, GetGUIThreadInfo, SetWindowPos,
-            SetWindowTextW, ShowWindow, GUITHREADINFO, HWND_TOPMOST, SWP_NOACTIVATE, SW_HIDE,
-            SW_SHOWNOACTIVATE, WS_BORDER, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
-            WS_POPUP,
+            CreateWindowExW, GetCursorPos, GetGUIThreadInfo, SetWindowPos, SetWindowTextW,
+            ShowWindow, GUITHREADINFO, HWND_TOPMOST, SWP_NOACTIVATE, SW_HIDE, SW_SHOWNOACTIVATE,
+            WS_BORDER, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
         },
     },
 };
@@ -39,13 +39,13 @@ pub fn hide() {
 }
 
 /// Find the focused GUI thread's caret in screen coordinates. This mirrors the
-/// Go presenter’s preference for a text caret over the mouse cursor, without
+/// Go presenter's preference for a text caret over the mouse cursor, without
 /// retaining TSF context/range COM pointers in the UI helper.
 fn caret_anchor() -> Option<(i32, i32)> {
     unsafe {
         let mut info: GUITHREADINFO = std::mem::zeroed();
         info.cbSize = std::mem::size_of::<GUITHREADINFO>() as u32;
-        if !GetGUIThreadInfo(0, &mut info).as_bool() || info.hwndCaret.0.is_null() {
+        if GetGUIThreadInfo(0, &mut info).is_err() || info.hwndCaret.0.is_null() {
             return None;
         }
         // The caret rectangle is client-relative. Place the popup below its
@@ -54,7 +54,7 @@ fn caret_anchor() -> Option<(i32, i32)> {
             x: info.rcCaret.left,
             y: info.rcCaret.bottom,
         };
-        if !ClientToScreen(info.hwndCaret, &mut point).as_bool() {
+        if ClientToScreen(info.hwndCaret, &mut point).is_err() {
             return None;
         }
         Some((point.x, point.y))
@@ -91,7 +91,7 @@ pub fn update(snapshot: &Snapshot) {
             format!("{marker} {}. {}", index + 1, candidate.text)
         })
         .collect();
-    let text = format!("{}\r\n{}", snapshot.composition, candidates.join("\r\n"));
+    let text = format!("{}\\r\\n{}", snapshot.composition, candidates.join("\\r\\n"));
     let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
 
     // Keep the popup compact while allowing candidates to be read vertically
