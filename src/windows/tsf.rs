@@ -189,7 +189,6 @@ struct EditSession {
 
 impl ITfEditSession_Impl for EditSession_Impl {
     fn DoEditSession(&self, edit_cookie: u32) -> Result<()> {
-        use windows::core::PCWSTR;
         // Do not hold service state across TSF calls: text changes can re-enter callbacks.
         let existing_range = self
             .state
@@ -203,13 +202,8 @@ impl ITfEditSession_Impl for EditSession_Impl {
             let mut selection = [TF_SELECTION::default()];
             let mut fetched = 0u32;
             unsafe {
-                self.context.GetSelection(
-                    edit_cookie,
-                    0,
-                    1,
-                    selection.as_mut_ptr(),
-                    &mut fetched,
-                )?;
+                self.context
+                    .GetSelection(edit_cookie, 0, &mut selection, &mut fetched)?;
             }
             if fetched == 0 {
                 return Err(Error::from(E_FAIL));
@@ -222,7 +216,7 @@ impl ITfEditSession_Impl for EditSession_Impl {
         let text = self.text.as_deref().unwrap_or("");
         let wide: Vec<u16> = text.encode_utf16().collect();
         unsafe {
-            range.SetText(edit_cookie, 0, PCWSTR(wide.as_ptr()), wide.len() as i32)?;
+            range.SetText(edit_cookie, 0, &wide)?;
         }
         let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
         if self.keep_composition {
@@ -299,22 +293,24 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
                 keep_composition,
             }
             .into();
-            let mut session_result = S_OK;
             let request_result = unsafe {
-                context.RequestEditSession(
-                    client_id,
-                    &session,
-                    TF_ES_SYNC | TF_ES_READWRITE,
-                    &mut session_result,
-                )
+                context.RequestEditSession(client_id, &session, TF_ES_SYNC | TF_ES_READWRITE)
             };
-            if request_result.is_err() || session_result.is_err() {
-                // Keep the engine in sync with the document if TSF denies the edit.
-                if let Ok(mut state) = self.state.lock() {
-                    state.engine = engine_before;
+            match request_result {
+                Err(error) => {
+                    // Keep the engine in sync with the document if TSF denies the edit.
+                    if let Ok(mut state) = self.state.lock() {
+                        state.engine = engine_before;
+                    }
+                    return Err(error);
                 }
-                request_result?;
-                return Err(Error::from(session_result));
+                Ok(session_result) if session_result.is_err() => {
+                    if let Ok(mut state) = self.state.lock() {
+                        state.engine = engine_before;
+                    }
+                    return Err(Error::from(session_result));
+                }
+                Ok(_) => {}
             }
         }
         Ok(BOOL(consumed as i32))
