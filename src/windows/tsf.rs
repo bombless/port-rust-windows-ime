@@ -16,7 +16,7 @@ use windows::{
         UI::TextServices::{
             ITfContext, ITfEditSession, ITfEditSession_Impl, ITfKeyEventSink, ITfKeyEventSink_Impl,
             ITfKeystrokeMgr, ITfRange, ITfTextInputProcessor, ITfTextInputProcessor_Impl,
-            ITfThreadMgr, TF_ES_READWRITE, TF_ES_SYNC, TF_SELECTION,
+            ITfThreadMgr, TF_ANCHOR_END, TF_ES_READWRITE, TF_ES_SYNC, TF_SELECTION,
         },
     },
 };
@@ -222,6 +222,16 @@ impl ITfEditSession_Impl for EditSession_Impl {
         let wide: Vec<u16> = text.encode_utf16().collect();
         unsafe {
             range.SetText(edit_cookie, 0, &wide)?;
+
+            // SetText changes the range contents but does not guarantee that the
+            // document selection (caret) moves to the end of the inserted text.
+            // Collapse a cloned range so the composition range itself remains
+            // intact for subsequent updates, then explicitly place the selection.
+            let mut caret_range = range.Clone()?;
+            caret_range.Collapse(edit_cookie, TF_ANCHOR_END)?;
+            let mut caret = [TF_SELECTION::default()];
+            caret[0].range = Some(caret_range);
+            self.context.SetSelection(edit_cookie, &caret)?;
         }
         let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
         if self.keep_composition {
