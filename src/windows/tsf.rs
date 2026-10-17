@@ -7,6 +7,7 @@ use std::{
     },
 };
 
+use windows_core::IUnknownImpl;
 use windows::{
     core::{implement, Error, Interface, Result, GUID, HRESULT},
     Win32::{
@@ -74,9 +75,21 @@ impl IClassFactory_Impl for ClassFactory_Impl {
         if lock.as_bool() {
             SERVER_LOCKS.fetch_add(1, Ordering::SeqCst);
         } else {
-            let _ = SERVER_LOCKS.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
-                (n > 0).then_some(n - 1)
-            });
+            loop {
+                let current = SERVER_LOCKS.load(Ordering::SeqCst);
+                if current == 0
+                    || SERVER_LOCKS
+                        .compare_exchange(
+                            current,
+                            current - 1,
+                            Ordering::SeqCst,
+                            Ordering::SeqCst,
+                        )
+                        .is_ok()
+                {
+                    break;
+                }
+            }
         }
         Ok(())
     }
@@ -122,7 +135,7 @@ impl ITfTextInputProcessor_Impl for TsfService_Impl {
         let keystroke_mgr: ITfKeystrokeMgr = thread_mgr.cast()?;
         let sink: ITfKeyEventSink = self.to_interface();
 
-        let mut state = self.0.state.lock().map_err(|_| Error::from(E_FAIL))?;
+        let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
         if state.active {
             return Err(Error::from(HRESULT(0x8001010Du32 as i32))); // RPC_E_CANTCALLOUT_ININPUTSYNCCALL
         }
