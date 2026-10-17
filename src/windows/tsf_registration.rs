@@ -142,7 +142,7 @@ unsafe fn register_tip_inner() -> HRESULT {
         &GUID_PORT_RUST_IME_PROFILE,
     );
 
-    let name: Vec<u16> = "Go Chinese Input Method".encode_utf16().collect();
+    let name: Vec<u16> = "Rust Chinese Input Method".encode_utf16().collect();
     hr = add_profile(
         profiles.0,
         &CLSID_PORT_RUST_IME,
