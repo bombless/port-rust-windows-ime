@@ -7,6 +7,7 @@ use std::{
     },
 };
 
+use crate::engine::{Engine, Key, KeyOutcome};
 use windows::{
     core::{implement, Error, Interface, Result, GUID, HRESULT},
     Win32::{
@@ -15,7 +16,7 @@ use windows::{
         UI::TextServices::{
             ITfContext, ITfEditSession, ITfEditSession_Impl, ITfKeyEventSink, ITfKeyEventSink_Impl,
             ITfKeystrokeMgr, ITfTextInputProcessor, ITfTextInputProcessor_Impl, ITfThreadMgr,
-            TF_ES_READWRITE, TF_ES_SYNC,
+            TF_ES_READWRITE, TF_ES_SYNC, TF_SELECTION,
         },
     },
 };
@@ -94,18 +95,20 @@ struct ServiceState {
     manager: Option<ITfKeystrokeMgr>,
     client_id: u32,
     active: bool,
+    engine: Engine,
+    composition_range: Option<ITfRange>,
 }
 
 #[implement(ITfTextInputProcessor, ITfKeyEventSink)]
 struct TsfService {
-    state: Mutex<ServiceState>,
+    state: std::sync::Arc<Mutex<ServiceState>>,
 }
 
 impl TsfService {
     fn new() -> Self {
         LIVE_OBJECTS.fetch_add(1, Ordering::SeqCst);
         Self {
-            state: Mutex::new(ServiceState::default()),
+            state: std::sync::Arc::new(Mutex::new(ServiceState::default())),
         }
     }
 }
@@ -171,14 +174,42 @@ impl ITfTextInputProcessor_Impl for TsfService_Impl {
     }
 }
 
-/// Initial TSF edit-session bridge. It obtains a real write lock but does not
-/// mutate text yet; key events remain unconsumed until composition editing lands.
+/// A write operation executed only while TSF grants the edit cookie.
 #[implement(ITfEditSession)]
-struct EditSession;
+struct EditSession {
+    context: ITfContext,
+    state: std::sync::Arc<Mutex<ServiceState>>,
+    text: Option<String>,
+}
 
 impl ITfEditSession_Impl for EditSession_Impl {
-    fn DoEditSession(&self, _edit_cookie: u32) -> Result<()> {
-        // All future document changes must happen here under TSF's edit cookie.
+    fn DoEditSession(&self, edit_cookie: u32) -> Result<()> {
+        use windows::core::PCWSTR;
+        let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+        let mut range = if let Some(range) = state.composition_range.clone() {
+            range
+        } else {
+            let mut selection = [TF_SELECTION::default()];
+            let mut fetched = 0u32;
+            unsafe {
+                self.context.GetSelection(edit_cookie, 0, 1, selection.as_mut_ptr(), &mut fetched)?;
+            }
+            if fetched == 0 {
+                return Err(Error::from(E_FAIL));
+            }
+            selection[0].range.clone().ok_or_else(|| Error::from(E_FAIL))?
+        };
+
+        let text = self.text.as_deref().unwrap_or("");
+        let wide: Vec<u16> = text.encode_utf16().collect();
+        unsafe {
+            range.SetText(edit_cookie, 0, PCWSTR(wide.as_ptr()), wide.len() as i32)?;
+        }
+        if self.text.is_some() {
+            state.composition_range = Some(range);
+        } else {
+            state.composition_range = None;
+        }
         Ok(())
     }
 }
@@ -191,12 +222,12 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
     fn OnTestKeyDown(
         &self,
         _context: Option<&ITfContext>,
-        _wparam: windows::Win32::Foundation::WPARAM,
+        wparam: windows::Win32::Foundation::WPARAM,
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
-        // Until edit sessions can safely write the document, pass all keys
-        // through rather than claiming input that would otherwise be lost.
-        Ok(BOOL(0))
+        let key = key_from_virtual_key(wparam.0 as u32);
+        let state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+        Ok(BOOL(state.engine.test_key(key) as i32))
     }
 
     fn OnTestKeyUp(
@@ -211,34 +242,46 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
     fn OnKeyDown(
         &self,
         context: Option<&ITfContext>,
-        _wparam: windows::Win32::Foundation::WPARAM,
+        wparam: windows::Win32::Foundation::WPARAM,
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
-        // Request the document lock through TSF, but do not consume the key or
-        // alter text until a real composition edit operation is implemented.
-        if let Some(context) = context {
-            let client_id = self
-                .state
-                .lock()
-                .map_err(|_| Error::from(E_FAIL))?
-                .client_id;
-            if client_id != 0 {
-                let session: ITfEditSession = EditSession.into();
-                let mut session_result = S_OK;
-                unsafe {
-                    context.RequestEditSession(
-                        client_id,
-                        &session,
-                        TF_ES_SYNC | TF_ES_READWRITE,
-                        &mut session_result,
-                    )?;
-                }
-                if session_result.is_err() {
-                    return Err(Error::from(session_result));
-                }
+        let Some(context) = context else { return Ok(BOOL(0)); };
+        let key = key_from_virtual_key(wparam.0 as u32);
+        let (client_id, outcome) = {
+            let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+            if !state.engine.test_key(key) {
+                return Ok(BOOL(0));
+            }
+            let outcome = state.engine.handle_key(key);
+            (state.client_id, outcome)
+        };
+        let (text, consumed) = match outcome {
+            KeyOutcome::Update(text) | KeyOutcome::Commit(text) => (Some(text), true),
+            KeyOutcome::Cancel => (Some(String::new()), true),
+            KeyOutcome::Consumed => (None, true),
+            KeyOutcome::PassThrough => (None, false),
+        };
+        if let Some(text) = text {
+            if client_id == 0 { return Ok(BOOL(0)); }
+            let session: ITfEditSession = EditSession {
+                context: context.clone(),
+                state: self.state.clone(),
+                text: if text.is_empty() { None } else { Some(text) },
+            }.into();
+            let mut session_result = S_OK;
+            unsafe {
+                context.RequestEditSession(
+                    client_id,
+                    &session,
+                    TF_ES_SYNC | TF_ES_READWRITE,
+                    &mut session_result,
+                )?;
+            }
+            if session_result.is_err() {
+                return Err(Error::from(session_result));
             }
         }
-        Ok(BOOL(0))
+        Ok(BOOL(consumed as i32))
     }
 
     fn OnKeyUp(
@@ -312,5 +355,19 @@ mod tests {
             GUID_PORT_RUST_IME_PROFILE,
             GUID::from_u128(0xe731b5d4_2a90_4f68_ac13_7d5e9b2046f1)
         );
+    }
+}
+
+fn key_from_virtual_key(vk: u32) -> Key {
+    match vk {
+        0x08 => Key::Backspace,
+        0x1b => Key::Escape,
+        0x25 | 0x26 => Key::Up,
+        0x27 | 0x28 => Key::Down,
+        0x20 => Key::Space,
+        0x0d => Key::Enter,
+        0x31..=0x39 => Key::Digit((vk - 0x30) as u8),
+        0x41..=0x5a => Key::Character(char::from_u32(vk).unwrap_or_default()),
+        _ => Key::Other,
     }
 }
