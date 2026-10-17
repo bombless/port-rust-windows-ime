@@ -12,9 +12,9 @@ use windows::Win32::{
     Foundation::{COLORREF, HWND, RECT},
     Graphics::Gdi::{
         CreateBitmap, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, DeleteDC,
-        DeleteObject, DrawTextW, GetDC, ReleaseDC, SelectObject, SetBkMode, SetTextColor,
+        DeleteObject, DrawTextW, GetDC, PatBlt, ReleaseDC, SelectObject, SetBkMode, SetTextColor,
         CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER,
-        DT_SINGLELINE, DT_VCENTER, FW_BOLD, OUT_DEFAULT_PRECIS, TRANSPARENT,
+        DT_SINGLELINE, DT_VCENTER, FW_BOLD, OUT_DEFAULT_PRECIS, TRANSPARENT, WHITENESS,
     },
     UI::WindowsAndMessaging::{
         CreateIconIndirect, GetSystemMetrics, HICON, ICONINFO, SM_CXSMICON, SM_CYSMICON,
@@ -372,9 +372,24 @@ unsafe fn create_text_icon(text: &str) -> Result<HICON> {
         return Err(Error::from_win32());
     }
 
+    let hdc_mask = CreateCompatibleDC(hdc_screen);
+    if hdc_mask.is_invalid() {
+        DeleteObject(hbm_color);
+        DeleteObject(hbm_mask);
+        DeleteDC(hdc_mem);
+        ReleaseDC(hwnd, hdc_screen);
+        return Err(Error::from_win32());
+    }
+
     let old_bm = SelectObject(hdc_mem, hbm_color);
+    let old_mask = SelectObject(hdc_mask, hbm_mask);
+    // A white AND mask makes the background transparent; black glyph pixels
+    // make only the text itself visible in the resulting icon.
+    PatBlt(hdc_mask, 0, 0, width, height, WHITENESS);
     SetBkMode(hdc_mem, TRANSPARENT);
     SetTextColor(hdc_mem, COLORREF(0x00FFFFFF));
+    SetBkMode(hdc_mask, TRANSPARENT);
+    SetTextColor(hdc_mask, COLORREF(0x00000000));
 
     let face: Vec<u16> = "Microsoft YaHei".encode_utf16().chain(Some(0)).collect();
     let font = CreateFontW(
@@ -387,10 +402,16 @@ unsafe fn create_text_icon(text: &str) -> Result<HICON> {
     let mut rect = RECT { left: 0, top: 0, right: width, bottom: height };
     let mut wide_text: Vec<u16> = text.encode_utf16().collect();
     DrawTextW(hdc_mem, &mut wide_text, &mut rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    let mut mask_text: Vec<u16> = text.encode_utf16().collect();
+    let mut mask_rect = RECT { left: 0, top: 0, right: width, bottom: height };
+    DrawTextW(hdc_mask, &mut mask_text, &mut mask_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
     SelectObject(hdc_mem, old_font);
+    SelectObject(hdc_mask, old_font);
     DeleteObject(font);
     SelectObject(hdc_mem, old_bm);
+    SelectObject(hdc_mask, hbm_mask);
+    DeleteDC(hdc_mask);
     DeleteDC(hdc_mem);
     ReleaseDC(hwnd, hdc_screen);
 
