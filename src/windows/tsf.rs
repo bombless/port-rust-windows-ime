@@ -13,7 +13,7 @@ use windows::Win32::{
     Graphics::Gdi::{
         CreateBitmap, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, DeleteDC,
         DeleteObject, DrawTextW, GetDC, PatBlt, ReleaseDC, SelectObject, SetBkMode, SetTextColor,
-        CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER,
+        CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER,
         DT_SINGLELINE, DT_VCENTER, FW_BOLD, OUT_DEFAULT_PRECIS, TRANSPARENT, WHITENESS,
     },
     UI::WindowsAndMessaging::{
@@ -365,8 +365,12 @@ unsafe fn create_text_icon(text: &str) -> Result<HICON> {
     let hbm_color = CreateCompatibleBitmap(hdc_screen, width, height);
     let hbm_mask = CreateBitmap(width, height, 1, 1, None);
     if hbm_color.is_invalid() || hbm_mask.is_invalid() {
-        if !hbm_color.is_invalid() { DeleteObject(hbm_color); }
-        if !hbm_mask.is_invalid() { DeleteObject(hbm_mask); }
+        if !hbm_color.is_invalid() {
+            DeleteObject(hbm_color);
+        }
+        if !hbm_mask.is_invalid() {
+            DeleteObject(hbm_mask);
+        }
         DeleteDC(hdc_mem);
         ReleaseDC(hwnd, hdc_screen);
         return Err(Error::from_win32());
@@ -393,19 +397,49 @@ unsafe fn create_text_icon(text: &str) -> Result<HICON> {
 
     let face: Vec<u16> = "Microsoft YaHei".encode_utf16().chain(Some(0)).collect();
     let font = CreateFontW(
-        height - 2, 0, 0, 0, FW_BOLD.0 as i32, 0, 0, 0,
-        DEFAULT_CHARSET.0 as u32, OUT_DEFAULT_PRECIS.0 as u32,
-        CLIP_DEFAULT_PRECIS.0 as u32, CLEARTYPE_QUALITY.0 as u32,
-        DEFAULT_PITCH.0 as u32, windows::core::PCWSTR(face.as_ptr()),
+        height - 2,
+        0,
+        0,
+        0,
+        FW_BOLD.0 as i32,
+        0,
+        0,
+        0,
+        DEFAULT_CHARSET.0 as u32,
+        OUT_DEFAULT_PRECIS.0 as u32,
+        CLIP_DEFAULT_PRECIS.0 as u32,
+        CLEARTYPE_QUALITY.0 as u32,
+        DEFAULT_PITCH.0 as u32,
+        windows::core::PCWSTR(face.as_ptr()),
     );
     let old_font = SelectObject(hdc_mem, font);
     let old_font_mask = SelectObject(hdc_mask, font);
-    let mut rect = RECT { left: 0, top: 0, right: width, bottom: height };
+    let mut rect = RECT {
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: height,
+    };
     let mut wide_text: Vec<u16> = text.encode_utf16().collect();
-    DrawTextW(hdc_mem, &mut wide_text, &mut rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    DrawTextW(
+        hdc_mem,
+        &mut wide_text,
+        &mut rect,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+    );
     let mut mask_text: Vec<u16> = text.encode_utf16().collect();
-    let mut mask_rect = RECT { left: 0, top: 0, right: width, bottom: height };
-    DrawTextW(hdc_mask, &mut mask_text, &mut mask_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    let mut mask_rect = RECT {
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: height,
+    };
+    DrawTextW(
+        hdc_mask,
+        &mut mask_text,
+        &mut mask_rect,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+    );
 
     SelectObject(hdc_mem, old_font);
     SelectObject(hdc_mask, old_font_mask);
