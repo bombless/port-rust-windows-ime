@@ -19,7 +19,7 @@
 - [x] GitHub Actions workflow run #23（提交 `73a5601343d1b4b178d41aa07fb8314b52bc26c6`）已完成且结论为 success；该 workflow 包含 Ubuntu 格式/测试/lint 和 Windows MSVC x64 build job。该结果证明 CI 命令通过，不等同于在真实 TSF 宿主中注册、激活或输入验证。
 - [x] GitHub Actions run #55（提交 `43396db`）的 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build 全部通过。
 - [x] GitHub Actions run #69（提交 `c581bc4`）再次通过 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build；该版本已包含 key-sink 全部透传、避免跨 TSF 调用持锁、恢复 DLL 导出等修正。
-- [ ] 最新 head 后续只有 README 文档改动；run #71 正在验证最新 head，最终结果待确认。
+- [ ] 新提交 `38b501f` 增加 edit-session 请求路径；其 Windows CI 编译结果尚待 Actions 实际运行确认。
 - [ ] 当前 Windows agent 未安装 Cargo，无法在本地重跑。未进行 Windows 实机 TSF 宿主验收。
 
 ## P0 — 先建立正确的源代码对应关系
@@ -37,8 +37,9 @@
 - [ ] 对 COM 接口实现做编译和 ABI 审核，完善 `ITfTextInputProcessorEx` 兼容性。
 - [x] 激活时 `AdviseKeyEventSink`、停用时 `UnadviseKeyEventSink`；避免持有服务状态锁跨越可能重入的 TSF COM 调用，撤销失败时保留 manager/active 状态，允许再次尝试。
 - [ ] 完善重复激活/并发调用策略，并在真实 TSF 宿主验证连接与撤销。
+- [x] 增加 `ITfEditSession` COM 对象，并在 `OnKeyDown` 中通过 `ITfContext::RequestEditSession(TF_ES_SYNC | TF_ES_READWRITE)` 请求 TSF 写锁；目前仅验证调用链设计，未声称已能编辑文本。
 - [ ] 实现 `ITfKeyEventSink` 的按键测试与处理：测试阶段不修改输入状态；处理阶段才消费按键并推进状态。
-- [ ] 当前按键 sink 尚未写入文档：实现 `ITfEditSession` 与 `ITfContext::RequestEditSession`，在有效文档锁内更新/提交/删除组合文本，并覆盖同步/异步请求及锁失败。
+- [x] 增加第一版 `ITfEditSession` 与 `ITfContext::RequestEditSession` 同步写锁请求路径；当前 `DoEditSession` 尚不修改文本，按键仍明确透传。需要继续实现插入/替换/提交/取消并覆盖锁失败。
 - [ ] 完成 TSF profile、语言/输入法 profile、CLSID、注册表键值、位数匹配、安装/卸载和注册/注销说明。
 - [ ] 检查 panic 不得越过 FFI/COM 边界；处理空指针、无效参数、HRESULT 与所有 unsafe 代码的安全约束。
 - [ ] 让 COM 对象、线程管理器、sink、窗口与资源在停用/卸载时可重复且安全地清理。
