@@ -267,14 +267,15 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
             return Ok(BOOL(0));
         };
         let key = key_from_virtual_key(wparam.0 as u32);
-        let (client_id, engine_before, outcome) = {
+        let (client_id, engine_before, outcome, snapshot) = {
             let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
             if !state.engine.test_key(key) {
                 return Ok(BOOL(0));
             }
             let engine_before = state.engine.clone();
             let outcome = state.engine.handle_key(key);
-            (state.client_id, engine_before, outcome)
+            let snapshot = state.engine.snapshot();
+            (state.client_id, engine_before, outcome, snapshot)
         };
         let (text, keep_composition, consumed) = match outcome {
             KeyOutcome::Update(text) => (Some(text), true, true),
@@ -317,6 +318,7 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
                 Ok(_) => {}
             }
         }
+        crate::windows::candidate_ui::update(&snapshot);
         Ok(BOOL(consumed as i32))
     }
 
