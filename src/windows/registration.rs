@@ -185,10 +185,10 @@ unsafe fn unregister_server() -> HRESULT {
     unregister_com_key()
 }
 
-/// Registers the COM CLSID and in-process server path.
+/// Registers the COM CLSID, in-process server path, TSF language profile, and categories.
 ///
-/// This does not register the TSF language profile; the service will not yet
-/// appear as a selectable input method until profile registration is added.
+/// This registration path is compile-tested by CI but has not yet been smoke-tested
+/// against the Windows TSF implementation on a real host.
 ///
 /// # Safety
 /// Called by COM with the standard zero-argument DLL export ABI.
