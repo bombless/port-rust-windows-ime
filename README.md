@@ -11,7 +11,7 @@ Implemented in the current development branch:
 - A platform-independent composition engine with unit tests.
 - Go-compatible TSF CLSID and language profile GUID constants.
 - Initial windows-rs COM class factory (`IClassFactory`) and DLL exports (`DllGetClassObject`, `DllCanUnloadNow`).
-- `DllRegisterServer` / `DllUnregisterServer` exports for the CLSID, `InprocServer32` path, and `Apartment` threading model, plus TSF language-profile and category registration/removal (implementation added; current Windows CI and real-host behavior still pending).
+- `DllRegisterServer` / `DllUnregisterServer` exports for the CLSID, `InprocServer32` path, `Apartment` threading model, TSF language profile, and six TSF categories. The registration path compiles, but has not been smoke-tested on a real Windows host.
 - Initial `ITfTextInputProcessor` activation/deactivation and `ITfKeyEventSink` registration/unregistration.
 - An `ITfEditSession` / `ITfContext::RequestEditSession` synchronous write-lock path. `DoEditSession` now uses the edit cookie with `ITfContext::GetSelection` and `ITfRange::SetText` to update the tracked composition range.
 - Key-event sink prediction calls `Engine::test_key`; actual key handling calls `Engine::handle_key` and routes update/commit/cancel outcomes through edit sessions.
@@ -19,7 +19,7 @@ Implemented in the current development branch:
 Not implemented yet:
 
 - TSF edit-session behavior has been connected to the engine but is not yet confirmed by the current Windows CI run or a real TSF host. Selection/range tracking, edit-session failure rollback, and caret behavior still need validation.
-- The TSF profile/category registration path now calls `ITfInputProcessorProfiles` and `ITfCategoryMgr` through COM vtables, following the Go `runRegistration` sequence. This new Windows-only path is not yet validated by a successful current-head Windows build or a real Windows registration smoke test.
+- TSF profile/category registration calls `ITfInputProcessorProfiles` and `ITfCategoryMgr` through COM vtables, following the Go `runRegistration` sequence. Current-head CI has compiled this path; a real Windows registration smoke test remains outstanding.
 - Candidate UI, full dictionary/ranking parity, and complete Go behavior migration.
 - Real Windows host activation and typing acceptance.
 
@@ -34,7 +34,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release --target x86_64-pc-windows-msvc
 ```
 
-The repository CI runs portable checks on Ubuntu and a Windows MSVC x64 build. Run #131 is in progress for the TSF registration commits; do not treat it as passed until the final conclusion is available. A successful compile is not proof that TSF profile registration, activation, or text insertion works in a real Windows host.
+The repository CI runs portable checks on Ubuntu and a Windows MSVC x64 build. Actions run #147 passed Linux fmt/test/clippy and Windows fmt/test/clippy plus the x64 release build. This does not prove that COM registration, TSF activation, or text insertion works in a real Windows host. A successful compile is not proof that TSF profile registration, activation, or text insertion works in a real Windows host.
 
 ## COM identity
 
@@ -46,4 +46,4 @@ These identifiers were compared with the native C declarations in `tip/main.go` 
 
 ## Validation boundary
 
-Do not register this build as a daily-use input method yet. Until registration is implemented and the edit-session path is validated in Windows CI and a real TSF host, this remains a partial COM/TSF implementation. Windows CI and real Windows TSF host validation must be reported separately.
+Do not register this build as a daily-use input method yet. Although the first registration path now exists and the Windows x64 build passes, this remains a partial COM/TSF implementation until registration, activation, and edit-session behavior are verified in a real TSF host. Windows CI and real Windows TSF host validation must be reported separately.
