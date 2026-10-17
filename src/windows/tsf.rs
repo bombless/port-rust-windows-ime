@@ -3,13 +3,14 @@ use std::{
     panic::{catch_unwind, AssertUnwindSafe},
     sync::{
         atomic::{AtomicU32, Ordering},
-        Mutex,
+        Arc, Mutex,
     },
 };
 
 use crate::engine::{Engine, Key, KeyOutcome};
+use windows::Win32::UI::WindowsAndMessaging::{LoadIconW, HICON, IDI_APPLICATION, IDI_INFORMATION};
 use windows::{
-    core::{implement, Error, Interface, Result, GUID, HRESULT},
+    core::{implement, Error, Interface, Result, BSTR, GUID, HRESULT},
     Win32::{
         Foundation::{BOOL, E_FAIL, E_POINTER, S_FALSE, S_OK},
         System::Com::{IClassFactory, IClassFactory_Impl},
@@ -17,9 +18,12 @@ use windows::{
             Input::KeyboardAndMouse::GetKeyState,
             TextServices::{
                 ITfContext, ITfEditSession, ITfEditSession_Impl, ITfKeyEventSink,
-                ITfKeyEventSink_Impl, ITfKeystrokeMgr, ITfRange, ITfTextInputProcessor,
-                ITfTextInputProcessor_Impl, ITfThreadMgr, TF_ANCHOR_END, TF_ES_READWRITE,
-                TF_ES_SYNC, TF_SELECTION,
+                ITfKeyEventSink_Impl, ITfKeystrokeMgr, ITfLangBarItem, ITfLangBarItemButton,
+                ITfLangBarItemButton_Impl, ITfLangBarItemMgr, ITfLangBarItemSink,
+                ITfLangBarItem_Impl, ITfRange, ITfSource, ITfSource_Impl, ITfTextInputProcessor,
+                ITfTextInputProcessor_Impl, ITfThreadMgr, GUID_LBI_INPUTMODE, TF_ANCHOR_END,
+                TF_ES_READWRITE, TF_ES_SYNC, TF_LANGBARITEMINFO, TF_LBI_STYLE_BTN_BUTTON,
+                TF_LBI_STYLE_SHOWNINTRAY, TF_SELECTION,
             },
         },
     },
@@ -104,11 +108,14 @@ struct ServiceState {
     shift_used: bool,
     engine: Engine,
     composition_range: Option<ITfRange>,
+    langbar_sink: Option<ITfLangBarItemSink>,
+    langbar_sink_cookie: u32,
 }
 
 #[implement(ITfTextInputProcessor, ITfKeyEventSink)]
 struct TsfService {
-    state: std::sync::Arc<Mutex<ServiceState>>,
+    state: Arc<Mutex<ServiceState>>,
+    langbar: Mutex<Option<(ITfLangBarItemMgr, ITfLangBarItemButton)>>,
 }
 
 impl TsfService {
@@ -118,7 +125,8 @@ impl TsfService {
         Self {
             // This Arc shares state with a synchronous edit-session callback; it is
             // not used to move apartment-bound TSF interfaces across threads.
-            state: std::sync::Arc::new(Mutex::new(ServiceState::default())),
+            state: Arc::new(Mutex::new(ServiceState::default())),
+            langbar: Mutex::new(None),
         }
     }
 }
@@ -156,10 +164,33 @@ impl ITfTextInputProcessor_Impl for TsfService_Impl {
         state.manager = Some(keystroke_mgr);
         state.client_id = client_id;
         state.active = true;
+        drop(state);
+
+        // Register a standard TSF input-mode item so Windows can place it in the
+        // language/input indicator area. The item reads the same state as Shift.
+        if let Ok(langbar_mgr) = thread_mgr.cast::<ITfLangBarItemMgr>() {
+            let item: ITfLangBarItemButton = ModeLangBarItem {
+                state: self.state.clone(),
+            }
+            .into();
+            if unsafe { langbar_mgr.AddItem(&item) }.is_ok() {
+                if let Ok(mut slot) = self.langbar.lock() {
+                    *slot = Some((langbar_mgr, item));
+                }
+            }
+        }
         Ok(())
     }
 
     fn Deactivate(&self) -> Result<()> {
+        if let Ok(mut slot) = self.langbar.lock() {
+            if let Some((manager, item)) = slot.take() {
+                let base: Result<ITfLangBarItem> = item.cast();
+                if let Ok(base) = base {
+                    let _ = unsafe { manager.RemoveItem(&base) };
+                }
+            }
+        }
         let (manager, client_id) = {
             let state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
             if !state.active {
@@ -189,11 +220,133 @@ impl ITfTextInputProcessor_Impl for TsfService_Impl {
     }
 }
 
+/// TSF language-bar button reflecting the active Chinese/English mode.
+#[implement(ITfLangBarItemButton, ITfSource)]
+struct ModeLangBarItem {
+    state: Arc<Mutex<ServiceState>>,
+}
+
+impl ITfLangBarItem_Impl for ModeLangBarItem_Impl {
+    fn GetInfo(&self, info: *mut TF_LANGBARITEMINFO) -> Result<()> {
+        if info.is_null() {
+            return Err(Error::from(E_POINTER));
+        }
+        let mut value = TF_LANGBARITEMINFO::default();
+        value.clsidService = CLSID_PORT_RUST_IME;
+        value.guidItem = GUID_LBI_INPUTMODE;
+        value.dwStyle = TF_LBI_STYLE_BTN_BUTTON | TF_LBI_STYLE_SHOWNINTRAY;
+        let description: Vec<u16> = "Rust Chinese Input Method".encode_utf16().collect();
+        for (dst, src) in value
+            .szDescription
+            .iter_mut()
+            .zip(description.iter().copied())
+        {
+            *dst = src;
+        }
+        unsafe {
+            *info = value;
+        }
+        Ok(())
+    }
+
+    fn GetStatus(&self) -> Result<u32> {
+        Ok(0)
+    }
+
+    fn Show(&self, _show: BOOL) -> Result<()> {
+        Ok(())
+    }
+
+    fn GetTooltipString(&self) -> Result<BSTR> {
+        let english = self.state.lock().map(|s| s.english_mode).unwrap_or(false);
+        Ok(BSTR::from(if english {
+            "Rust IME - English"
+        } else {
+            "Rust IME - 中文"
+        }))
+    }
+}
+
+impl ITfSource_Impl for ModeLangBarItem_Impl {
+    fn AdviseSink(&self, riid: *const GUID, punk: Option<&windows::core::IUnknown>) -> Result<u32> {
+        if riid.is_null() || punk.is_none() {
+            return Err(Error::from(E_POINTER));
+        }
+        if unsafe { *riid } != ITfLangBarItemSink::IID {
+            return Err(Error::from(HRESULT(0x80004002u32 as i32)));
+        }
+        let sink: ITfLangBarItemSink = punk.unwrap().cast()?;
+        let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+        if state.langbar_sink.is_some() {
+            return Err(Error::from(HRESULT(0x8000FFFFu32 as i32)));
+        }
+        state.langbar_sink = Some(sink);
+        state.langbar_sink_cookie = 1;
+        Ok(1)
+    }
+
+    fn UnadviseSink(&self, cookie: u32) -> Result<()> {
+        let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+        if cookie != state.langbar_sink_cookie || state.langbar_sink.is_none() {
+            return Err(Error::from(HRESULT(0x80070057u32 as i32)));
+        }
+        state.langbar_sink = None;
+        state.langbar_sink_cookie = 0;
+        Ok(())
+    }
+}
+
+impl ITfLangBarItemButton_Impl for ModeLangBarItem_Impl {
+    fn OnClick(
+        &self,
+        _click: windows::Win32::UI::TextServices::TfLBIClick,
+        _pt: &windows::Win32::Foundation::POINT,
+        _area: *const windows::Win32::Foundation::RECT,
+    ) -> Result<()> {
+        let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+        state.english_mode = !state.english_mode;
+        state.engine = Engine::default();
+        let sink = state.langbar_sink.clone();
+        drop(state);
+        if let Some(sink) = sink {
+            let _ = unsafe { sink.OnUpdate(7) };
+        }
+        crate::windows::candidate_ui::hide();
+        Ok(())
+    }
+
+    fn InitMenu(&self, _menu: Option<&windows::Win32::UI::TextServices::ITfMenu>) -> Result<()> {
+        Ok(())
+    }
+    fn OnMenuSelect(&self, _id: u32) -> Result<()> {
+        Ok(())
+    }
+
+    fn GetIcon(&self) -> Result<HICON> {
+        let english = self.state.lock().map(|s| s.english_mode).unwrap_or(false);
+        unsafe {
+            LoadIconW(
+                None,
+                if english {
+                    IDI_APPLICATION
+                } else {
+                    IDI_INFORMATION
+                },
+            )
+        }
+    }
+
+    fn GetText(&self) -> Result<BSTR> {
+        let english = self.state.lock().map(|s| s.english_mode).unwrap_or(false);
+        Ok(BSTR::from(if english { "英" } else { "中" }))
+    }
+}
+
 /// A write operation executed only while TSF grants the edit cookie.
 #[implement(ITfEditSession)]
 struct EditSession {
     context: ITfContext,
-    state: std::sync::Arc<Mutex<ServiceState>>,
+    state: Arc<Mutex<ServiceState>>,
     text: Option<String>,
     keep_composition: bool,
 }
@@ -278,11 +431,19 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
         let vk = wparam.0 as u32;
-        if is_shift_key(vk) { return Ok(BOOL(1)); }
-        if has_shortcut_modifier() { return Ok(BOOL(0)); }
+        if is_shift_key(vk) {
+            return Ok(BOOL(1));
+        }
+        if has_shortcut_modifier() {
+            return Ok(BOOL(0));
+        }
         let state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
-        if state.shift_pending { return Ok(BOOL(1)); }
-        if state.english_mode { return Ok(BOOL(0)); }
+        if state.shift_pending {
+            return Ok(BOOL(1));
+        }
+        if state.english_mode {
+            return Ok(BOOL(0));
+        }
         let key = key_from_virtual_key(vk);
         Ok(BOOL(state.engine.test_key(key) as i32))
     }
@@ -305,7 +466,8 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
         let vk = wparam.0 as u32;
         if is_shift_key(vk) {
             let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
-            state.shift_pending = true; state.shift_used = false;
+            state.shift_pending = true;
+            state.shift_used = false;
             return Ok(BOOL(1));
         }
         {
@@ -315,14 +477,25 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
                 if !state.english_mode {
                     state.english_mode = true;
                     state.engine = Engine::default();
+                    let sink = state.langbar_sink.clone();
+                    drop(state);
+                    if let Some(sink) = sink {
+                        let _ = unsafe { sink.OnUpdate(7) };
+                    }
                     crate::windows::candidate_ui::hide();
                     return Ok(BOOL(0));
                 }
             }
-            if state.english_mode { return Ok(BOOL(0)); }
+            if state.english_mode {
+                return Ok(BOOL(0));
+            }
         }
-        let Some(context) = context else { return Ok(BOOL(0)); };
-        if has_shortcut_modifier() { return Ok(BOOL(0)); }
+        let Some(context) = context else {
+            return Ok(BOOL(0));
+        };
+        if has_shortcut_modifier() {
+            return Ok(BOOL(0));
+        }
         let key = key_from_virtual_key(vk);
         let (client_id, engine_before, outcome, snapshot) = {
             let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
@@ -386,13 +559,23 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
         if is_shift_key(wparam.0 as u32) {
-            let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
-            if state.shift_pending && !state.shift_used {
-                state.english_mode = !state.english_mode;
-                state.engine = Engine::default();
-                crate::windows::candidate_ui::hide();
+            let sink = {
+                let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+                let sink = if state.shift_pending && !state.shift_used {
+                    state.english_mode = !state.english_mode;
+                    state.engine = Engine::default();
+                    crate::windows::candidate_ui::hide();
+                    state.langbar_sink.clone()
+                } else {
+                    None
+                };
+                state.shift_pending = false;
+                state.shift_used = false;
+                sink
+            };
+            if let Some(sink) = sink {
+                let _ = unsafe { sink.OnUpdate(7) };
             }
-            state.shift_pending = false; state.shift_used = false;
         }
         Ok(BOOL(0))
     }
@@ -445,7 +628,9 @@ pub unsafe extern "system" fn DllCanUnloadNow() -> HRESULT {
     }
 }
 
-fn is_shift_key(vk: u32) -> bool { matches!(vk, 0x10 | 0xA0 | 0xA1) }
+fn is_shift_key(vk: u32) -> bool {
+    matches!(vk, 0x10 | 0xA0 | 0xA1)
+}
 
 fn key_from_virtual_key(vk: u32) -> Key {
     match vk {
