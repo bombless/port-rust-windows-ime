@@ -16,7 +16,8 @@
 - [x] 从 Go 源仓库 `tip/main.go` 的 C 定义与 Go 声明交叉核对身份：CLSID `C2D4A9B1-7F63-4A85-9E20-4B6D8C1F3072`，语言 profile GUID `E731B5D4-2A90-4F68-AC13-7D5E9B2046F1`；Rust 常量与之匹配。Go 源码还明确使用 `ITfTextInputProcessor`、`ITfTextInputProcessorEx`、`ITfKeyEventSink`，注册线程模型为 `Apartment`。
 - [x] 为两个 GUID 增加回归测试。
 - [x] 修正 CI 的 push 分支过滤器，将 `feat/**` 加入，确保开发分支 push 也触发 workflow（此前只有 `main` 和 `fix/**`）。
-- [ ] CI 结果待观察；本轮尚未声称本地 cargo 命令或 Windows 实机验证成功。
+- [x] GitHub Actions workflow run #23（提交 `73a5601343d1b4b178d41aa07fb8314b52bc26c6`）已完成且结论为 success；该 workflow 包含 Ubuntu 格式/测试/lint 和 Windows MSVC x64 build job。该结果证明 CI 命令通过，不等同于在真实 TSF 宿主中注册、激活或输入验证。
+- [ ] 本轮未运行本地 cargo 命令，未进行 Windows 实机 TSF 宿主验收。
 
 ## P0 — 先建立正确的源代码对应关系
 
