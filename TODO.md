@@ -22,7 +22,8 @@
 - [x] 提交 `d95d758` / `1a44c74` / `6136099` 将引擎按键预测和正式处理接入 key sink，并让 edit session 在 TSF edit cookie 下通过 `ITfContext::GetSelection` 与 `ITfRange::SetText` 写入组合文本；提交/取消后清除跟踪的组合范围。
 - [x] 重新核查 PR #5 当前 head `a30cbbf821ee5b53c5ddb17664d3f828dfa70fed`：GitHub Actions run #97 的 Linux 与 Windows job 均在格式检查失败；后续提交修正了 rustfmt 差异并增加虚拟键映射测试。
 - [x] GitHub Actions run #105：Linux fmt/test/clippy 通过；Windows job 在 `cargo test --all-targets --all-features` 编译 Windows 专属代码时失败。日志确认 windows-rs 0.58 的安全包装签名与原代码不符：`GetSelection` 接收 `&mut [TF_SELECTION]`，`SetText` 接收 `&[u16]`，`RequestEditSession` 返回 `Result<HRESULT>`。提交 `c8d73d9` 已按实际编译器诊断修正这三处调用。
-- [ ] 最新修正与新增注册导出尚未取得当前 head 的 Windows CI 结果。未进行 Windows 实机 TSF 宿主验收。
+- [x] run #108 的 Linux/Windows 两个 job 又在 rustfmt 检查失败，差异只涉及 `src/windows/mod.rs` 的模块顺序和 `registration.rs` 的格式；已分别提交格式修正（`0986b45`、`e15ce8e`）。
+- [ ] 当前最新 head 的 Windows 专属编译结果尚未取得。未进行 Windows 实机 TSF 宿主验收。
 
 ## P0 — 先建立正确的源代码对应关系
 
