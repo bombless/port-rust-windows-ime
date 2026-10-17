@@ -8,17 +8,18 @@
 - [x] 添加初步输入状态机：`src/engine.rs`，包含按键/候选/快照类型、预测按键结果、基础组合输入与选择逻辑、少量内置示例词和单元测试。
 - [x] 添加 Windows 模块骨架：`src/windows/mod.rs`、`src/windows/tsf.rs`。
 - [x] 添加项目 README。
-- [ ] 完整输入法尚未完成；新增 COM/TSF 代码仍须由 Windows CI 编译验证，并在真实 TSF 宿主验收。
+- [ ] 完整输入法尚未完成；COM 基础代码已通过一次 Windows MSVC x64 CI build，但仍须验证最新 head，并在真实 TSF 宿主验收。
 
 ## 本轮实际核查与改动（2026-10-17）
 
-- [x] 读取开发分支 `feat/tsf-com-server` 上的 `TODO.md`、`README.md`、`Cargo.toml`、`src/lib.rs`、`src/engine.rs`、`src/windows/tsf.rs` 和 CI workflow；确认当前 TSF 仍是生命周期占位模型，尚无 COM 类工厂、DLL 导出、真实 TSF 接口或 edit session。
+- [x] 本轮开始时读取开发分支上的 `TODO.md`、`README.md`、`Cargo.toml`、Rust 源码和 CI workflow；当时 TSF 只有生命周期占位模型，没有 COM 类工厂、DLL 导出或真实 TSF 接口。此后已在本分支添加第一版 COM/TIP/key-sink 实现。
 - [x] 从 Go 源仓库 `tip/main.go` 的 C 定义与 Go 声明交叉核对身份：CLSID `C2D4A9B1-7F63-4A85-9E20-4B6D8C1F3072`，语言 profile GUID `E731B5D4-2A90-4F68-AC13-7D5E9B2046F1`；Rust 常量与之匹配。Go 源码还明确使用 `ITfTextInputProcessor`、`ITfTextInputProcessorEx`、`ITfKeyEventSink`，注册线程模型为 `Apartment`。
 - [x] 为两个 GUID 增加回归测试。
 - [x] 修正 CI 的 push 分支过滤器，将 `feat/**` 加入，确保开发分支 push 也触发 workflow（此前只有 `main` 和 `fix/**`）。
 - [x] GitHub Actions workflow run #23（提交 `73a5601343d1b4b178d41aa07fb8314b52bc26c6`）已完成且结论为 success；该 workflow 包含 Ubuntu 格式/测试/lint 和 Windows MSVC x64 build job。该结果证明 CI 命令通过，不等同于在真实 TSF 宿主中注册、激活或输入验证。
-- [x] GitHub Actions run #55（提交 `43396db`）的 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build 全部通过；该次验证覆盖 COM class factory、TIP 和 key sink 注册代码。
-- [ ] 在其后进一步改为 edit sessions 未就绪时按键全部透传，并调整了停用/锁处理；最新提交 `4f1997b` 的 CI 正在重新运行，尚未确认结果。
+- [x] GitHub Actions run #55（提交 `43396db`）的 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build 全部通过。
+- [x] GitHub Actions run #69（提交 `c581bc4`）再次通过 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build；该版本已包含 key-sink 全部透传、避免跨 TSF 调用持锁、恢复 DLL 导出等修正。
+- [ ] 最新 head 后续只有 README 文档改动；run #71 正在验证最新 head，最终结果待确认。
 - [ ] 当前 Windows agent 未安装 Cargo，无法在本地重跑。未进行 Windows 实机 TSF 宿主验收。
 
 ## P0 — 先建立正确的源代码对应关系
@@ -30,7 +31,7 @@
 
 ## P0 — 实现真正可加载的 TSF COM server
 
-- [x] 增加 `IClassFactory`、`DllGetClassObject`、`DllCanUnloadNow` 的第一版实现；通过 `#[implement]` 生成 COM vtable，并跟踪活动对象和 `LockServer` 计数（待 Windows CI 验证）。
+- [x] 增加 `IClassFactory`、`DllGetClassObject`、`DllCanUnloadNow` 的第一版实现；通过 `#[implement]` 生成 COM vtable，并跟踪活动对象和 `LockServer` 计数（run #55/#69 Windows CI 通过）。
 - [ ] 补充 `DllRegisterServer` / `DllUnregisterServer`、注册表与 TSF profile 注册/注销导出。
 - [x] 增加 `ITfTextInputProcessor`、`ITfKeyEventSink` 的第一版 windows-rs `#[implement]` 实现；在 edit sessions 尚未就绪前，键盘回调明确返回未消费，避免吞掉用户输入。
 - [ ] 对 COM 接口实现做编译和 ABI 审核，完善 `ITfTextInputProcessorEx` 兼容性。
@@ -60,7 +61,7 @@
 
 ## P1 — 构建、CI 和发布
 
-- [ ] 本地/CI 执行 `cargo fmt --check`、`cargo test`、`cargo clippy --all-targets --all-features -- -D warnings`，修复全部失败。
+- [x] GitHub Actions 已在 Linux 与 Windows MSVC x64 执行 `cargo fmt --all -- --check`、`cargo test --all-targets --all-features` 和 `cargo clippy --all-targets --all-features -- -D warnings` 并通过（run #69）；最新文档提交 run #71 待确认。
 - [x] CI 配置包含 Ubuntu 格式/测试/lint job 和 Windows MSVC x64 build job；push 触发器已覆盖 `feat/**`。
 - [ ] Windows CI 构建通过后，核实生成物确实是可加载的 DLL，并核对导出符号、依赖项和目标架构。
 - [ ] 增加最小安装/注册、卸载/注销脚本或明确步骤；脚本需可重复执行，并谨慎处理管理员权限和注册表。
