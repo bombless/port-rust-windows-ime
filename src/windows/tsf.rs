@@ -105,12 +105,12 @@ struct TsfService {
 }
 
 impl TsfService {
+    #[allow(clippy::arc_with_non_send_sync)]
     fn new() -> Self {
         LIVE_OBJECTS.fetch_add(1, Ordering::SeqCst);
         Self {
             // This Arc shares state with a synchronous edit-session callback; it is
             // not used to move apartment-bound TSF interfaces across threads.
-            #[allow(clippy::arc_with_non_send_sync)]
             state: std::sync::Arc::new(Mutex::new(ServiceState::default())),
         }
     }
