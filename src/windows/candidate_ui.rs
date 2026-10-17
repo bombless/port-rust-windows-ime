@@ -46,7 +46,9 @@ pub fn update(snapshot: &Snapshot) {
 
     if !snapshot.visible || snapshot.candidates.is_empty() {
         if let Some(hwnd) = *slot {
-            unsafe { ShowWindow(HWND(hwnd as *mut _), SW_HIDE) };
+            unsafe {
+                let _ = ShowWindow(HWND(hwnd as *mut _), SW_HIDE);
+            }
         }
         return;
     }
