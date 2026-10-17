@@ -230,7 +230,7 @@ impl ITfEditSession_Impl for EditSession_Impl {
             let mut caret_range = range.Clone()?;
             caret_range.Collapse(edit_cookie, TF_ANCHOR_END)?;
             let mut caret = [TF_SELECTION::default()];
-            caret[0].range = Some(caret_range);
+            caret[0].range = std::mem::ManuallyDrop::new(Some(caret_range));
             self.context.SetSelection(edit_cookie, &caret)?;
         }
         let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
