@@ -99,6 +99,9 @@ struct ServiceState {
     manager: Option<ITfKeystrokeMgr>,
     client_id: u32,
     active: bool,
+    english_mode: bool,
+    shift_pending: bool,
+    shift_used: bool,
     engine: Engine,
     composition_range: Option<ITfRange>,
 }
@@ -274,21 +277,23 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
         wparam: windows::Win32::Foundation::WPARAM,
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
-        if has_shortcut_modifier() {
-            return Ok(BOOL(0));
-        }
-        let key = key_from_virtual_key(wparam.0 as u32);
+        let vk = wparam.0 as u32;
+        if is_shift_key(vk) { return Ok(BOOL(1)); }
+        if has_shortcut_modifier() { return Ok(BOOL(0)); }
         let state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+        if state.shift_pending { return Ok(BOOL(1)); }
+        if state.english_mode { return Ok(BOOL(0)); }
+        let key = key_from_virtual_key(vk);
         Ok(BOOL(state.engine.test_key(key) as i32))
     }
 
     fn OnTestKeyUp(
         &self,
         _context: Option<&ITfContext>,
-        _wparam: windows::Win32::Foundation::WPARAM,
+        wparam: windows::Win32::Foundation::WPARAM,
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
-        Ok(BOOL(0))
+        Ok(BOOL(is_shift_key(wparam.0 as u32) as i32))
     }
 
     fn OnKeyDown(
@@ -297,13 +302,28 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
         wparam: windows::Win32::Foundation::WPARAM,
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
-        let Some(context) = context else {
-            return Ok(BOOL(0));
-        };
-        if has_shortcut_modifier() {
-            return Ok(BOOL(0));
+        let vk = wparam.0 as u32;
+        if is_shift_key(vk) {
+            let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+            state.shift_pending = true; state.shift_used = false;
+            return Ok(BOOL(1));
         }
-        let key = key_from_virtual_key(wparam.0 as u32);
+        {
+            let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+            if state.shift_pending {
+                state.shift_used = true;
+                if !state.english_mode {
+                    state.english_mode = true;
+                    state.engine = Engine::default();
+                    crate::windows::candidate_ui::hide();
+                    return Ok(BOOL(0));
+                }
+            }
+            if state.english_mode { return Ok(BOOL(0)); }
+        }
+        let Some(context) = context else { return Ok(BOOL(0)); };
+        if has_shortcut_modifier() { return Ok(BOOL(0)); }
+        let key = key_from_virtual_key(vk);
         let (client_id, engine_before, outcome, snapshot) = {
             let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
             if !state.engine.test_key(key) {
@@ -362,9 +382,18 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
     fn OnKeyUp(
         &self,
         _context: Option<&ITfContext>,
-        _wparam: windows::Win32::Foundation::WPARAM,
+        wparam: windows::Win32::Foundation::WPARAM,
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
+        if is_shift_key(wparam.0 as u32) {
+            let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+            if state.shift_pending && !state.shift_used {
+                state.english_mode = !state.english_mode;
+                state.engine = Engine::default();
+                crate::windows::candidate_ui::hide();
+            }
+            state.shift_pending = false; state.shift_used = false;
+        }
         Ok(BOOL(0))
     }
 
@@ -415,6 +444,8 @@ pub unsafe extern "system" fn DllCanUnloadNow() -> HRESULT {
         S_FALSE
     }
 }
+
+fn is_shift_key(vk: u32) -> bool { matches!(vk, 0x10 | 0xA0 | 0xA1) }
 
 fn key_from_virtual_key(vk: u32) -> Key {
     match vk {
