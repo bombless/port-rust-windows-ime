@@ -83,7 +83,11 @@ pub fn update(snapshot: &Snapshot) {
         .take(9)
         .enumerate()
         .map(|(index, candidate)| {
-            let marker = if index == snapshot.selected { "▶" } else { " " };
+            let marker = if index == snapshot.selected {
+                "▶"
+            } else {
+                " "
+            };
             format!("{marker} {}. {}", index + 1, candidate.text)
         })
         .collect();
