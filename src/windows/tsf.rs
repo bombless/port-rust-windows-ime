@@ -228,6 +228,9 @@ fn vk_to_key(vk: usize) -> Key {
 }
 
 /// COM entry point called by COM activation for an in-process class factory.
+///
+/// # Safety
+/// COM callers must pass valid pointers according to the `DllGetClassObject` ABI.
 #[no_mangle]
 pub unsafe extern "system" fn DllGetClassObject(
     clsid: *const GUID,
@@ -255,6 +258,9 @@ pub unsafe extern "system" fn DllGetClassObject(
 }
 
 /// Reports whether this DLL has outstanding COM objects or server locks.
+///
+/// # Safety
+/// This function has no pointer arguments and may be called by the COM loader.
 #[no_mangle]
 pub unsafe extern "system" fn DllCanUnloadNow() -> HRESULT {
     if LIVE_OBJECTS.load(Ordering::SeqCst) == 0 && SERVER_LOCKS.load(Ordering::SeqCst) == 0 {
