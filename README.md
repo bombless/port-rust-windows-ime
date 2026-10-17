@@ -12,12 +12,12 @@ Implemented in the current development branch:
 - Go-compatible TSF CLSID and language profile GUID constants.
 - Initial windows-rs COM class factory (`IClassFactory`) and DLL exports (`DllGetClassObject`, `DllCanUnloadNow`).
 - Initial `ITfTextInputProcessor` activation/deactivation and `ITfKeyEventSink` registration/unregistration.
-- An initial `ITfEditSession` / `ITfContext::RequestEditSession` synchronous write-lock path. `DoEditSession` is currently a no-op; it does **not** insert or modify document text.
-- Key-event sink callbacks that deliberately pass keys through; typing is not yet implemented.
+- An `ITfEditSession` / `ITfContext::RequestEditSession` synchronous write-lock path. `DoEditSession` now uses the edit cookie with `ITfContext::GetSelection` and `ITfRange::SetText` to update the tracked composition range.
+- Key-event sink prediction calls `Engine::test_key`; actual key handling calls `Engine::handle_key` and routes update/commit/cancel outcomes through edit sessions.
 
 Not implemented yet:
 
-- Actual document composition/commit/cancel text operations. The edit-session request path exists, but its callback is currently a no-op and the key sink intentionally does not consume keys or insert text.
+- TSF edit-session behavior has been connected to the engine but is not yet confirmed by the current Windows CI run or a real TSF host. Selection/range tracking, edit-session failure rollback, and caret behavior still need validation.
 - `DllRegisterServer` / `DllUnregisterServer`, registry setup, and TSF profile registration.
 - Candidate UI, full dictionary/ranking parity, and complete Go behavior migration.
 - Real Windows host activation and typing acceptance.
@@ -45,4 +45,4 @@ These identifiers were compared with the native C declarations in `tip/main.go` 
 
 ## Validation boundary
 
-Do not register this build as a daily-use input method yet. Until edit sessions and registration are implemented and tested, it is only a partial COM/TSF implementation. Windows CI and real Windows TSF host validation must be reported separately.
+Do not register this build as a daily-use input method yet. Until registration is implemented and the edit-session path is validated in Windows CI and a real TSF host, this remains a partial COM/TSF implementation. Windows CI and real Windows TSF host validation must be reported separately.
