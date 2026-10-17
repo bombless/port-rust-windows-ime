@@ -87,3 +87,13 @@
 - [ ] COM/TSF 接口、注册与 DLL 生命周期真实可用，而不是占位结构体或模拟适配器。
 - [ ] 自动化测试和 Windows 构建通过，且至少完成一次 Windows 实机注册、激活和实际输入验收。
 - [ ] 文档准确区分已实现、已测试、已在实机验证和仍存在的限制。
+
+## TSF registration follow-up (2026-10-17)
+
+- [x] Added `src/windows/tsf_registration.rs` to call `ITfInputProcessorProfiles::Register`, `AddLanguageProfile`, and `Unregister`, plus `ITfCategoryMgr::RegisterCategory` / `UnregisterCategory`, matching the Go `runRegistration` category GUIDs and zh-CN LANGID.
+- [x] Wired profile registration after COM registry setup and profile/category removal before deleting the CLSID. On profile registration failure, attempt to remove the COM CLSID tree.
+- [x] Updated PR #5 and README to describe the actual implementation and clearly state that current-head Windows validation is pending.
+- [ ] Review raw COM vtable method indices/signatures against Windows SDK headers and confirm with the Windows MSVC CI run.
+- [ ] Add cleanup for categories already registered if a later category registration fails.
+- [ ] Verify registration/unregistration idempotence, elevation/registry behavior, and actual profile visibility on Windows.
+- [ ] Do not treat CI compilation as proof of real TSF activation or text insertion.
