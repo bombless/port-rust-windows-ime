@@ -419,7 +419,7 @@ fn lookup(code: &str) -> Vec<Candidate> {
         .filter(|entry| entry.code == code || entry.code.starts_with(code))
         .collect();
     // Stable sorting preserves upstream dictionary order for equal weights.
-    matches.sort_by(|a, b| b.weight.cmp(&a.weight));
+    matches.sort_by_key(|a| std::cmp::Reverse(a.weight));
 
     for entry in matches {
         if candidates.len() >= 100 {
