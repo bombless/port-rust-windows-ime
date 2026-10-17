@@ -20,8 +20,6 @@ use windows::{
 };
 use windows_core::IUnknownImpl;
 
-use crate::engine::{Engine, Key};
-
 /// CLSID used by the source Go TSF implementation.
 pub const CLSID_PORT_RUST_IME: GUID = GUID::from_u128(0xc2d4a9b1_7f63_4a85_9e20_4b6d8c1f3072);
 /// Language-profile GUID used by the source Go TSF implementation.
@@ -95,7 +93,6 @@ struct ServiceState {
     manager: Option<ITfKeystrokeMgr>,
     client_id: u32,
     active: bool,
-    engine: Engine,
 }
 
 #[implement(ITfTextInputProcessor, ITfKeyEventSink)]
@@ -169,7 +166,6 @@ impl ITfTextInputProcessor_Impl for TsfService_Impl {
         state.manager = None;
         state.client_id = 0;
         state.active = false;
-        state.engine = Engine::new();
         Ok(())
     }
 }
@@ -182,11 +178,12 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
     fn OnTestKeyDown(
         &self,
         _context: Option<&ITfContext>,
-        wparam: windows::Win32::Foundation::WPARAM,
+        _wparam: windows::Win32::Foundation::WPARAM,
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
-        let state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
-        Ok(BOOL(i32::from(state.engine.test_key(vk_to_key(wparam.0)))))
+        // Until edit sessions can safely write the document, pass all keys
+        // through rather than claiming input that would otherwise be lost.
+        Ok(BOOL(0))
     }
 
     fn OnTestKeyUp(
@@ -201,18 +198,10 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
     fn OnKeyDown(
         &self,
         _context: Option<&ITfContext>,
-        wparam: windows::Win32::Foundation::WPARAM,
+        _wparam: windows::Win32::Foundation::WPARAM,
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
-        let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
-        let key = vk_to_key(wparam.0);
-        if !state.engine.test_key(key) {
-            return Ok(BOOL(0));
-        }
-        let _outcome = state.engine.handle_key(key);
-        // Consumption/state transition is wired. Text composition/edit-session
-        // integration is intentionally a separate next step.
-        Ok(BOOL(1))
+        Ok(BOOL(0))
     }
 
     fn OnKeyUp(
@@ -227,64 +216,6 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
     fn OnPreservedKey(&self, _context: Option<&ITfContext>, _guid: *const GUID) -> Result<BOOL> {
         Ok(BOOL(0))
     }
-}
-
-fn vk_to_key(vk: usize) -> Key {
-    match vk {
-        0x08 => Key::Backspace,
-        0x1b => Key::Escape,
-        0x26 => Key::Up,
-        0x28 => Key::Down,
-        0x20 => Key::Space,
-        0x0d => Key::Enter,
-        0x31..=0x39 => Key::Digit((vk - 0x30) as u8),
-        0x41..=0x5a => Key::Character(char::from_u32(vk as u32).unwrap_or_default()),
-        _ => Key::Other,
-    }
-}
-
-/// COM entry point called by COM activation for an in-process class factory.
-///
-/// # Safety
-/// COM callers must pass valid pointers according to the `DllGetClassObject` ABI.
-#[no_mangle]
-pub unsafe extern "system" fn DllGetClassObject(
-    clsid: *const GUID,
-    iid: *const GUID,
-    out: *mut *mut c_void,
-) -> HRESULT {
-    match catch_unwind(AssertUnwindSafe(|| {
-        if out.is_null() {
-            return E_POINTER;
-        }
-        *out = std::ptr::null_mut();
-        if clsid.is_null() || iid.is_null() {
-            return E_POINTER;
-        }
-        if *clsid != CLSID_PORT_RUST_IME {
-            return HRESULT(0x80040111u32 as i32); // CLASS_E_CLASSNOTAVAILABLE
-        }
-
-        let factory: IClassFactory = ClassFactory::new().into();
-        (Interface::vtable(&factory).base__.QueryInterface)(factory.as_raw(), iid, out)
-    })) {
-        Ok(hr) => hr,
-        Err(_) => E_FAIL,
-    }
-}
-
-/// Reports whether this DLL has outstanding COM objects or server locks.
-///
-/// # Safety
-/// This function has no pointer arguments and may be called by the COM loader.
-#[no_mangle]
-pub unsafe extern "system" fn DllCanUnloadNow() -> HRESULT {
-    if LIVE_OBJECTS.load(Ordering::SeqCst) == 0 && SERVER_LOCKS.load(Ordering::SeqCst) == 0 {
-        S_OK
-    } else {
-        S_FALSE
-    }
-}
 
 #[cfg(test)]
 mod tests {
