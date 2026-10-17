@@ -227,7 +227,7 @@ impl ITfEditSession_Impl for EditSession_Impl {
             // document selection (caret) moves to the end of the inserted text.
             // Collapse a cloned range so the composition range itself remains
             // intact for subsequent updates, then explicitly place the selection.
-            let mut caret_range = range.Clone()?;
+            let caret_range = range.Clone()?;
             caret_range.Collapse(edit_cookie, TF_ANCHOR_END)?;
             let mut caret = [TF_SELECTION::default()];
             caret[0].range = std::mem::ManuallyDrop::new(Some(caret_range));
