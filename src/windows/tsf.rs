@@ -13,8 +13,8 @@ use windows::{
         Foundation::{BOOL, E_FAIL, E_POINTER, S_FALSE, S_OK},
         System::Com::{IClassFactory, IClassFactory_Impl},
         UI::TextServices::{
-            ITfContext, ITfKeyEventSink, ITfKeyEventSink_Impl, ITfKeystrokeMgr,
-            ITfTextInputProcessor, ITfTextInputProcessor_Impl, ITfThreadMgr,
+            ITfContext, ITfEditSession, ITfEditSession_Impl, ITfKeyEventSink, ITfKeyEventSink_Impl,
+            ITfKeystrokeMgr, ITfTextInputProcessor, ITfTextInputProcessor_Impl, ITfThreadMgr, TF_ES_READWRITE, TF_ES_SYNC,
         },
     },
 };
@@ -170,6 +170,18 @@ impl ITfTextInputProcessor_Impl for TsfService_Impl {
     }
 }
 
+/// Initial TSF edit-session bridge. It obtains a real write lock but does not
+/// mutate text yet; key events remain unconsumed until composition editing lands.
+#[implement(ITfEditSession)]
+struct EditSession;
+
+impl ITfEditSession_Impl for EditSession_Impl {
+    fn DoEditSession(&self, _edit_cookie: u32) -> Result<()> {
+        // All future document changes must happen here under TSF's edit cookie.
+        Ok(())
+    }
+}
+
 impl ITfKeyEventSink_Impl for TsfService_Impl {
     fn OnSetFocus(&self, _foreground: BOOL) -> Result<()> {
         Ok(())
@@ -197,10 +209,34 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
 
     fn OnKeyDown(
         &self,
-        _context: Option<&ITfContext>,
+        context: Option<&ITfContext>,
         _wparam: windows::Win32::Foundation::WPARAM,
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
+        // Request the document lock through TSF, but do not consume the key or
+        // alter text until a real composition edit operation is implemented.
+        if let Some(context) = context {
+            let client_id = self
+                .state
+                .lock()
+                .map_err(|_| Error::from(E_FAIL))?
+                .client_id;
+            if client_id != 0 {
+                let session: ITfEditSession = EditSession.into();
+                let mut session_result = S_OK;
+                unsafe {
+                    context.RequestEditSession(
+                        client_id,
+                        &session,
+                        TF_ES_SYNC | TF_ES_READWRITE,
+                        &mut session_result,
+                    )?;
+                }
+                if session_result.is_err() {
+                    return Err(Error::from(session_result));
+                }
+            }
+        }
         Ok(BOOL(0))
     }
 
