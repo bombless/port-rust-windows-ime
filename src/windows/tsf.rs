@@ -399,6 +399,7 @@ unsafe fn create_text_icon(text: &str) -> Result<HICON> {
         DEFAULT_PITCH.0 as u32, windows::core::PCWSTR(face.as_ptr()),
     );
     let old_font = SelectObject(hdc_mem, font);
+    let old_font_mask = SelectObject(hdc_mask, font);
     let mut rect = RECT { left: 0, top: 0, right: width, bottom: height };
     let mut wide_text: Vec<u16> = text.encode_utf16().collect();
     DrawTextW(hdc_mem, &mut wide_text, &mut rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
@@ -407,10 +408,10 @@ unsafe fn create_text_icon(text: &str) -> Result<HICON> {
     DrawTextW(hdc_mask, &mut mask_text, &mut mask_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
     SelectObject(hdc_mem, old_font);
-    SelectObject(hdc_mask, old_font);
+    SelectObject(hdc_mask, old_font_mask);
     DeleteObject(font);
     SelectObject(hdc_mem, old_bm);
-    SelectObject(hdc_mask, hbm_mask);
+    SelectObject(hdc_mask, old_mask);
     DeleteDC(hdc_mask);
     DeleteDC(hdc_mem);
     ReleaseDC(hwnd, hdc_screen);
