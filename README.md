@@ -1,32 +1,33 @@
 # port-rust-windows-ime
 
-Rust port of [port-golang-windows-ime](https://github.com/bombless/port-golang-windows-ime), targeting a real Windows Text Services Framework (TSF) text service.
+A Rust port of [port-golang-windows-ime](https://github.com/bombless/port-golang-windows-ime), implemented as a Windows Text Services Framework (TSF) text service.
 
-## Current status
+## Status
 
-This is an early implementation and is **not yet a usable production IME**.
+The development branch contains an initial COM/TSF implementation and a prototype input engine. It is suitable for development and review, but **has not yet been validated as a working Windows input method on a real TSF host**.
 
-Implemented in the current development branch:
+Implemented:
 
-- A platform-independent composition engine with unit tests.
-- Go-compatible TSF CLSID and language profile GUID constants.
-- Initial windows-rs COM class factory (`IClassFactory`) and DLL exports (`DllGetClassObject`, `DllCanUnloadNow`).
-- `DllRegisterServer` / `DllUnregisterServer` exports for the CLSID, `InprocServer32` path, `Apartment` threading model, TSF language profile, and six TSF categories. The registration path compiles, but has not been smoke-tested on a real Windows host.
-- Initial `ITfTextInputProcessor` activation/deactivation and `ITfKeyEventSink` registration/unregistration.
-- An `ITfEditSession` / `ITfContext::RequestEditSession` synchronous write-lock path. `DoEditSession` now uses the edit cookie with `ITfContext::GetSelection` and `ITfRange::SetText` to update the tracked composition range.
-- Key-event sink prediction calls `Engine::test_key`; actual key handling calls `Engine::handle_key` and routes update/commit/cancel outcomes through edit sessions.
+- A Rust composition engine with unit tests and a bundled Luna Pinyin dictionary.
+- Source-compatible TSF CLSID and language-profile GUID constants.
+- COM class factory and DLL exports: `DllGetClassObject`, `DllCanUnloadNow`, `DllRegisterServer`, and `DllUnregisterServer`.
+- Registration of the in-process COM server, zh-CN language profile, and six TSF categories.
+- Initial `ITfTextInputProcessor` activation/deactivation and `ITfKeyEventSink` registration.
+- A synchronous `ITfEditSession` path that requests a TSF write lock and updates text through `ITfRange::SetText`, with explicit caret placement and tracked composition range.
+- A first-pass native candidate popup showing the composition and up to nine candidates.
 
-Not implemented yet:
+Still to validate or complete:
 
-- TSF edit-session behavior has been connected to the engine but is not yet confirmed by the current Windows CI run or a real TSF host. Selection/range tracking, edit-session failure rollback, and caret behavior still need validation.
-- TSF profile/category registration calls `ITfInputProcessorProfiles` and `ITfCategoryMgr` through COM vtables, following the Go `runRegistration` sequence. Current-head CI has compiled this path; a real Windows registration smoke test remains outstanding.
-- First-pass native candidate popup: shows the current composition and up to nine candidates, highlights the selected candidate, hides on cancellation/commit, and anchors near the mouse cursor as a fallback. This is a prototype only; caret anchoring, monitor/DPI handling, dedicated UI-thread ownership, candidate click/flip interaction, and real-host verification remain outstanding.
-- Full Go dictionary/ranking parity and complete behavior migration.
-- Real Windows host activation and typing acceptance.
+- Real Windows registration, profile visibility, service activation, and text input in a TSF host.
+- Edit-session behavior under real selection/range conditions, including rollback and caret behavior when TSF denies or fails an edit.
+- COM ABI/vtable correctness, failure paths, repeated activation/deactivation, and complete resource cleanup.
+- Candidate UI caret anchoring, monitor/work-area bounds, per-monitor DPI, candidate interaction, and UI-thread ownership.
+- Full behavior parity with the Go implementation, including dictionary loading/ranking and input edge cases.
+- A supported uninstall workflow.
 
 ## Build and test
 
-On a Rust toolchain with the target installed:
+Install a Rust toolchain and the `x86_64-pc-windows-msvc` target. Run the following checks:
 
 ```powershell
 cargo fmt --all -- --check
@@ -35,30 +36,25 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release --target x86_64-pc-windows-msvc
 ```
 
-The repository CI runs portable checks on Ubuntu and a Windows MSVC x64 build. Actions run #147 passed Linux fmt/test/clippy and Windows fmt/test/clippy plus the x64 release build. This does not prove that COM registration, TSF activation, or text insertion works in a real Windows host. A successful compile is not proof that TSF profile registration, activation, or text insertion works in a real Windows host.
+GitHub Actions runs formatting, tests, and Clippy on Ubuntu and Windows, and builds the Windows x64 release DLL. These checks establish that the code compiles and automated checks pass; they do **not** establish that TSF registration, activation, or text editing works on a real Windows host.
 
 ## COM identity
 
 - CLSID: `C2D4A9B1-7F63-4A85-9E20-4B6D8C1F3072`
 - Language profile GUID: `E731B5D4-2A90-4F68-AC13-7D5E9B2046F1`
-- Intended in-process threading model: `Apartment`
+- In-process threading model: `Apartment`
 
-These identifiers were compared with the native C declarations in `tip/main.go` in the Go source repository.
+The identifiers were checked against the native declarations in `tip/main.go` in the Go source repository.
 
-## Validation boundary
+## Register the x64 DLL (experimental)
 
-Do not register this build as a daily-use input method yet. Although the first registration path now exists and the Windows x64 build passes, this remains a partial COM/TSF implementation until registration, activation, and edit-session behavior are verified in a real TSF host. Windows CI and real Windows TSF host validation must be reported separately.
-
-
-## Install the x64 DLL (experimental)
-
-Run PowerShell **as Administrator** on 64-bit Windows. Pass the path to the built or downloaded DLL:
+Registration currently supports 64-bit Windows. Open PowerShell **as Administrator** and provide the built or downloaded DLL path:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\install.ps1 .\port_rust_windows_ime.dll
 ```
 
-For a GitHub Actions build, download the `port-rust-windows-ime-windows-x64` artifact, extract it, then pass the extracted `port_rust_windows_ime.dll` path to the script. The installer invokes the native x64 `regsvr32.exe`, calls the DLL's `DllRegisterServer` export (which registers the COM class and TSF language profile/categories), and checks the resulting COM DLL path and `Apartment` threading model. It fails if the registration command or post-registration checks fail.
+For a GitHub Actions build, download and extract the `port-rust-windows-ime-windows-x64` artifact, then pass the extracted `port_rust_windows_ime.dll` to the script. The script invokes the native x64 `regsvr32.exe` and verifies the registered DLL path and `Apartment` threading model.
 
-This is an experimental registration script, not a production installer. It does not yet provide an uninstall script, and successful registration does not prove that Windows activates the service or that typing works. Real Windows TSF host testing is still required.
+This is a registration helper, not a production installer. There is no companion uninstall script yet. Successful registration alone does not confirm that Windows exposes or activates the profile or that text input works. Do not rely on this build as a daily-use input method until it has been validated on a real Windows TSF host.
