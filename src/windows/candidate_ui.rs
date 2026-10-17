@@ -9,9 +9,10 @@ use windows::{
     Win32::{
         Foundation::{HWND, POINT},
         UI::WindowsAndMessaging::{
-            CreateWindowExW, GetCursorPos, SetWindowPos, SetWindowTextW, ShowWindow, HWND_TOPMOST,
-            SWP_NOACTIVATE, SW_HIDE, SW_SHOWNOACTIVATE, WS_BORDER, WS_EX_NOACTIVATE,
-            WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+            ClientToScreen, CreateWindowExW, GetCursorPos, GetGUIThreadInfo, SetWindowPos,
+            SetWindowTextW, ShowWindow, GUITHREADINFO, HWND_TOPMOST, SWP_NOACTIVATE, SW_HIDE,
+            SW_SHOWNOACTIVATE, WS_BORDER, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+            WS_POPUP,
         },
     },
 };
@@ -37,6 +38,29 @@ pub fn hide() {
     }
 }
 
+/// Find the focused GUI thread's caret in screen coordinates. This mirrors the
+/// Go presenter’s preference for a text caret over the mouse cursor, without
+/// retaining TSF context/range COM pointers in the UI helper.
+fn caret_anchor() -> Option<(i32, i32)> {
+    unsafe {
+        let mut info: GUITHREADINFO = std::mem::zeroed();
+        info.cbSize = std::mem::size_of::<GUITHREADINFO>() as u32;
+        if !GetGUIThreadInfo(0, &mut info).as_bool() || info.hwndCaret.0.is_null() {
+            return None;
+        }
+        // The caret rectangle is client-relative. Place the popup below its
+        // lower-left corner, converted to virtual-screen coordinates.
+        let mut point = POINT {
+            x: info.rcCaret.left,
+            y: info.rcCaret.bottom,
+        };
+        if !ClientToScreen(info.hwndCaret, &mut point).as_bool() {
+            return None;
+        }
+        Some((point.x, point.y))
+    }
+}
+
 /// Publish the current candidate snapshot. The popup is hidden when no
 /// composition/candidates are available.
 pub fn update(snapshot: &Snapshot) {
@@ -59,11 +83,7 @@ pub fn update(snapshot: &Snapshot) {
         .take(9)
         .enumerate()
         .map(|(index, candidate)| {
-            let marker = if index == snapshot.selected {
-                "▶"
-            } else {
-                " "
-            };
+            let marker = if index == snapshot.selected { "▶" } else { " " };
             format!("{marker} {}. {}", index + 1, candidate.text)
         })
         .collect();
@@ -107,12 +127,16 @@ pub fn update(snapshot: &Snapshot) {
         hwnd
     };
 
-    let mut point = POINT::default();
-    let (x, y) = if unsafe { GetCursorPos(&mut point).is_ok() } {
-        (point.x, point.y + 20)
-    } else {
-        (80, 80)
-    };
+    // Prefer the focused text caret. Cursor anchoring is only a fallback for
+    // hosts that do not expose a GUI caret through GetGUIThreadInfo.
+    let (x, y) = caret_anchor().unwrap_or_else(|| {
+        let mut point = POINT::default();
+        if unsafe { GetCursorPos(&mut point).is_ok() } {
+            (point.x, point.y + 20)
+        } else {
+            (80, 80)
+        }
+    });
     unsafe {
         let _ = SetWindowTextW(hwnd, PCWSTR(wide.as_ptr()));
         let _ = SetWindowPos(hwnd, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE);
