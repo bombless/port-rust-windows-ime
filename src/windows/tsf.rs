@@ -218,7 +218,6 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
     }
 }
 
-
 /// COM entry point called by COM activation for an in-process class factory.
 ///
 /// # Safety
