@@ -108,6 +108,9 @@ impl TsfService {
     fn new() -> Self {
         LIVE_OBJECTS.fetch_add(1, Ordering::SeqCst);
         Self {
+            // This Arc shares state with a synchronous edit-session callback; it is
+            // not used to move apartment-bound TSF interfaces across threads.
+            #[allow(clippy::arc_with_non_send_sync)]
             state: std::sync::Arc::new(Mutex::new(ServiceState::default())),
         }
     }
@@ -374,6 +377,20 @@ pub unsafe extern "system" fn DllCanUnloadNow() -> HRESULT {
     }
 }
 
+fn key_from_virtual_key(vk: u32) -> Key {
+    match vk {
+        0x08 => Key::Backspace,
+        0x1b => Key::Escape,
+        0x25 | 0x26 => Key::Up,
+        0x27 | 0x28 => Key::Down,
+        0x20 => Key::Space,
+        0x0d => Key::Enter,
+        0x31..=0x39 => Key::Digit((vk - 0x30) as u8),
+        0x41..=0x5a => Key::Character(char::from_u32(vk).unwrap_or_default()),
+        _ => Key::Other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,19 +420,5 @@ mod tests {
         assert_eq!(key_from_virtual_key(0x41), Key::Character('A'));
         assert_eq!(key_from_virtual_key(0x5a), Key::Character('Z'));
         assert_eq!(key_from_virtual_key(0x70), Key::Other);
-    }
-}
-
-fn key_from_virtual_key(vk: u32) -> Key {
-    match vk {
-        0x08 => Key::Backspace,
-        0x1b => Key::Escape,
-        0x25 | 0x26 => Key::Up,
-        0x27 | 0x28 => Key::Down,
-        0x20 => Key::Space,
-        0x0d => Key::Enter,
-        0x31..=0x39 => Key::Digit((vk - 0x30) as u8),
-        0x41..=0x5a => Key::Character(char::from_u32(vk).unwrap_or_default()),
-        _ => Key::Other,
     }
 }
