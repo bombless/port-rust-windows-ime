@@ -231,7 +231,11 @@ impl ITfEditSession_Impl for EditSession_Impl {
             caret_range.Collapse(edit_cookie, TF_ANCHOR_END)?;
             let mut caret = [TF_SELECTION::default()];
             caret[0].range = std::mem::ManuallyDrop::new(Some(caret_range));
-            self.context.SetSelection(edit_cookie, &caret)?;
+            let selection_result = self.context.SetSelection(edit_cookie, &caret);
+            // TF_SELECTION stores its interface pointer in ManuallyDrop; release
+            // our temporary range reference after TSF has copied the selection.
+            std::mem::ManuallyDrop::drop(&mut caret[0].range);
+            selection_result?;
         }
         let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
         if self.keep_composition {
