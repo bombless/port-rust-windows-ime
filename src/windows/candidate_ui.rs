@@ -12,7 +12,7 @@ use windows::{
             Input::KeyboardAndMouse::GetCursorPos,
             WindowsAndMessaging::{
                 CreateWindowExW, SetWindowPos, SetWindowTextW, ShowWindow, HWND_TOPMOST, SS_LEFT,
-                SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, WS_BORDER, WS_EX_NOACTIVATE,
+                SWP_NOACTIVATE, SW_HIDE, SW_SHOWNOACTIVATE, WS_BORDER, WS_EX_NOACTIVATE,
                 WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
             },
         },
