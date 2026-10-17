@@ -239,13 +239,14 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
     ) -> Result<BOOL> {
         let Some(context) = context else { return Ok(BOOL(0)); };
         let key = key_from_virtual_key(wparam.0 as u32);
-        let (client_id, outcome) = {
+        let (client_id, engine_before, outcome) = {
             let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
             if !state.engine.test_key(key) {
                 return Ok(BOOL(0));
             }
+            let engine_before = state.engine.clone();
             let outcome = state.engine.handle_key(key);
-            (state.client_id, outcome)
+            (state.client_id, engine_before, outcome)
         };
         let (text, keep_composition, consumed) = match outcome {
             KeyOutcome::Update(text) => (Some(text), true, true),
@@ -263,15 +264,20 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
                 keep_composition,
             }.into();
             let mut session_result = S_OK;
-            unsafe {
+            let request_result = unsafe {
                 context.RequestEditSession(
                     client_id,
                     &session,
                     TF_ES_SYNC | TF_ES_READWRITE,
                     &mut session_result,
-                )?;
-            }
-            if session_result.is_err() {
+                )
+            };
+            if request_result.is_err() || session_result.is_err() {
+                // Keep the engine in sync with the document if TSF denies the edit.
+                if let Ok(mut state) = self.state.lock() {
+                    state.engine = engine_before;
+                }
+                request_result?;
                 return Err(Error::from(session_result));
             }
         }
