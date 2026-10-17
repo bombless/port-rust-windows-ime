@@ -177,9 +177,18 @@ const SEED_WORDS: &[(&str, &str)] = &[
         ("wanshang", "晚上"), ("zaoshang", "早上"), ("zhongwu", "中午"), ("xianzai", "现在"),
     ];
 
-static RIME_ENTRIES: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
+#[derive(Debug, Clone)]
+struct RimeEntry {
+    code: String,
+    word: String,
+    // Rime's optional third column is a percentage weight for this word/reading.
+    // Store hundredths of a percentage point to avoid floating-point ordering.
+    weight: u32,
+}
 
-fn rime_entries() -> &'static [(String, String)] {
+static RIME_ENTRIES: std::sync::OnceLock<Vec<RimeEntry>> = std::sync::OnceLock::new();
+
+fn rime_entries() -> &'static [RimeEntry] {
     RIME_ENTRIES.get_or_init(|| {
         let mut in_data = false;
         let mut entries = Vec::new();
@@ -192,21 +201,27 @@ fn rime_entries() -> &'static [(String, String)] {
             let mut fields = line.split('\t');
             let Some(word) = fields.next() else { continue };
             let Some(raw_code) = fields.next() else { continue };
+            let weight = fields.next()
+                .and_then(|raw| raw.trim().strip_suffix('%'))
+                .and_then(|raw| raw.parse::<f64>().ok())
+                .map(|value| (value * 100.0).round() as u32)
+                .unwrap_or(0);
             let code: String = raw_code.chars()
                 .filter(|c| c.is_ascii_alphabetic())
                 .map(|c| c.to_ascii_lowercase())
                 .collect();
             if !code.is_empty() && !word.is_empty() {
-                entries.push((code, word.to_owned()));
+                entries.push(RimeEntry { code, word: word.to_owned(), weight });
             }
         }
         entries
     })
 }
 
-/// Search the curated seed entries first, then the vendored Rime Luna Pinyin
-/// dictionary. Rime's pronunciation columns are normalized by removing spaces
-/// so the existing unspaced composition engine can match full pinyin.
+/// Search curated seed entries first, then Rime entries ranked by their
+/// upstream percentage weights. Unweighted entries retain dictionary order
+/// relative to other unweighted entries. Spaces in pinyin are removed to
+/// match the engine's unspaced composition.
 fn lookup(code: &str) -> Vec<Candidate> {
     let mut candidates: Vec<Candidate> = Vec::new();
     for (pinyin, word) in SEED_WORDS {
@@ -216,12 +231,17 @@ fn lookup(code: &str) -> Vec<Candidate> {
             candidates.push(Candidate { text: (*word).to_owned(), code: (*pinyin).to_owned() });
         }
     }
-    for (pinyin, word) in rime_entries() {
+
+    let mut matches: Vec<&RimeEntry> = rime_entries().iter()
+        .filter(|entry| entry.code == code || entry.code.starts_with(code))
+        .collect();
+    // Stable sorting preserves upstream dictionary order for equal weights.
+    matches.sort_by(|a, b| b.weight.cmp(&a.weight));
+
+    for entry in matches {
         if candidates.len() >= 100 { break; }
-        if (pinyin == code || pinyin.starts_with(code))
-            && !candidates.iter().any(|candidate| candidate.text == *word)
-        {
-            candidates.push(Candidate { text: word.clone(), code: pinyin.clone() });
+        if !candidates.iter().any(|candidate| candidate.text == entry.word) {
+            candidates.push(Candidate { text: entry.word.clone(), code: entry.code.clone() });
         }
     }
     candidates
@@ -275,5 +295,19 @@ mod tests {
         let mut e = Engine::new();
         type_text(&mut e, "kafei");
         assert!(e.snapshot().candidates.iter().any(|c| c.text == "咖啡"));
+    }
+
+    #[test]
+    fn parses_rime_percentage_weights() {
+        let mut e = Engine::new();
+        type_text(&mut e, "wan");
+        // Rime assigns 万's "wan" reading 99.98%, while its "mo" reading
+        // has only 0.02%; the "wan" entry must carry the larger parsed weight.
+        let entries = rime_entries();
+        let wan = entries.iter().find(|entry| entry.word == "万" && entry.code == "wan").unwrap();
+        let mo = entries.iter().find(|entry| entry.word == "万" && entry.code == "mo").unwrap();
+        assert_eq!(wan.weight, 9998);
+        assert_eq!(mo.weight, 2);
+        assert!(e.snapshot().candidates.iter().any(|c| c.text == "万"));
     }
 }
