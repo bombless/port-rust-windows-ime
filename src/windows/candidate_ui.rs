@@ -21,17 +21,19 @@ use windows::{
 
 use crate::engine::Snapshot;
 
-static WINDOW: OnceLock<Mutex<Option<HWND>>> = OnceLock::new();
+static WINDOW: OnceLock<Mutex<Option<isize>>> = OnceLock::new();
 
-fn window_slot() -> &'static Mutex<Option<HWND>> {
+// Store the native handle as an integer so the global mutex is `Send`/`Sync`.
+// HWND itself wraps a raw pointer and therefore cannot be stored in a static Mutex.
+fn window_slot() -> &'static Mutex<Option<isize>> {
     WINDOW.get_or_init(|| Mutex::new(None))
 }
 
 /// Hide the popup, for example when the TSF service is deactivated.
 pub fn hide() {
     if let Ok(slot) = window_slot().lock() {
-        if let Some(hwnd) = slot.as_ref() {
-            unsafe { ShowWindow(*hwnd, SW_HIDE) };
+        if let Some(hwnd) = *slot {
+            unsafe { ShowWindow(HWND(hwnd as *mut _), SW_HIDE) };
         }
     }
 }
@@ -44,8 +46,8 @@ pub fn update(snapshot: &Snapshot) {
     };
 
     if !snapshot.visible || snapshot.candidates.is_empty() {
-        if let Some(hwnd) = slot.as_ref() {
-            unsafe { ShowWindow(*hwnd, SW_HIDE) };
+        if let Some(hwnd) = *slot {
+            unsafe { ShowWindow(HWND(hwnd as *mut _), SW_HIDE) };
         }
         return;
     }
@@ -78,8 +80,8 @@ pub fn update(snapshot: &Snapshot) {
     let candidate_count = candidates.len() as i32;
     let height = (candidate_count * 24 + 36).clamp(60, 260);
 
-    let hwnd = if let Some(hwnd) = slot.as_ref() {
-        *hwnd
+    let hwnd = if let Some(hwnd) = *slot {
+        HWND(hwnd as *mut _)
     } else {
         let created = unsafe {
             CreateWindowExW(
@@ -100,7 +102,7 @@ pub fn update(snapshot: &Snapshot) {
         let Ok(hwnd) = created else {
             return;
         };
-        *slot = Some(hwnd);
+        *slot = Some(hwnd.0 as isize);
         hwnd
     };
 
