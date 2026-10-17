@@ -8,12 +8,10 @@ use windows::{
     core::{w, PCWSTR},
     Win32::{
         Foundation::{HWND, POINT},
-        UI::{
-            WindowsAndMessaging::{
-                CreateWindowExW, GetCursorPos, SetWindowPos, SetWindowTextW, ShowWindow,
-                HWND_TOPMOST, SWP_NOACTIVATE, SW_HIDE, SW_SHOWNOACTIVATE, WS_BORDER, WS_EX_NOACTIVATE,
-                WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
-            },
+        UI::WindowsAndMessaging::{
+            CreateWindowExW, GetCursorPos, SetWindowPos, SetWindowTextW, ShowWindow, HWND_TOPMOST,
+            SWP_NOACTIVATE, SW_HIDE, SW_SHOWNOACTIVATE, WS_BORDER, WS_EX_NOACTIVATE,
+            WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
         },
     },
 };
