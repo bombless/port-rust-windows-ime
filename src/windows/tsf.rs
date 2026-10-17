@@ -30,9 +30,6 @@ pub const GUID_PORT_RUST_IME_PROFILE: GUID =
 static LIVE_OBJECTS: AtomicU32 = AtomicU32::new(0);
 static SERVER_LOCKS: AtomicU32 = AtomicU32::new(0);
 
-#[derive(Default)]
-struct ClassFactory;
-
 impl ClassFactory {
     fn new() -> Self {
         LIVE_OBJECTS.fetch_add(1, Ordering::SeqCst);
@@ -125,7 +122,7 @@ impl ITfTextInputProcessor_Impl for TsfService_Impl {
         let keystroke_mgr: ITfKeystrokeMgr = thread_mgr.cast()?;
         let sink: ITfKeyEventSink = self.to_interface();
 
-        let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+        let mut state = self.0.state.lock().map_err(|_| Error::from(E_FAIL))?;
         if state.active {
             return Err(Error::from(HRESULT(0x8001010Du32 as i32))); // RPC_E_CANTCALLOUT_ININPUTSYNCCALL
         }
