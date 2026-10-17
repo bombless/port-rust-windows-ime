@@ -12,11 +12,11 @@ Implemented in the current development branch:
 - Go-compatible TSF CLSID and language profile GUID constants.
 - Initial windows-rs COM class factory (`IClassFactory`) and DLL exports (`DllGetClassObject`, `DllCanUnloadNow`).
 - Initial `ITfTextInputProcessor` activation/deactivation and `ITfKeyEventSink` registration/unregistration.
-- Per-service engine state and virtual-key mapping for the initial key sink.
+- Key-event sink callbacks that deliberately pass keys through until edit-session text operations are implemented.
 
 Not implemented yet:
 
-- TSF edit sessions and actual document composition/commit/cancel text operations. The current key sink can update internal engine state but does not insert text into applications.
+- TSF edit sessions and actual document composition/commit/cancel text operations. The current key sink is registered but intentionally does not consume keys or insert text.
 - `DllRegisterServer` / `DllUnregisterServer`, registry setup, and TSF profile registration.
 - Candidate UI, full dictionary/ranking parity, and complete Go behavior migration.
 - Real Windows host activation and typing acceptance.
