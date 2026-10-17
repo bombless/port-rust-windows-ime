@@ -30,7 +30,9 @@ fn window_slot() -> &'static Mutex<Option<isize>> {
 pub fn hide() {
     if let Ok(slot) = window_slot().lock() {
         if let Some(hwnd) = *slot {
-            unsafe { ShowWindow(HWND(hwnd as *mut _), SW_HIDE) };
+            unsafe {
+                let _ = ShowWindow(HWND(hwnd as *mut _), SW_HIDE);
+            }
         }
     }
 }
@@ -112,6 +114,6 @@ pub fn update(snapshot: &Snapshot) {
     unsafe {
         let _ = SetWindowTextW(hwnd, PCWSTR(wide.as_ptr()));
         let _ = SetWindowPos(hwnd, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE);
-        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
     }
 }
