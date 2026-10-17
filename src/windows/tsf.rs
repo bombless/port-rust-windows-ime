@@ -13,10 +13,14 @@ use windows::{
     Win32::{
         Foundation::{BOOL, E_FAIL, E_POINTER, S_FALSE, S_OK},
         System::Com::{IClassFactory, IClassFactory_Impl},
-        UI::TextServices::{
-            ITfContext, ITfEditSession, ITfEditSession_Impl, ITfKeyEventSink, ITfKeyEventSink_Impl,
-            ITfKeystrokeMgr, ITfRange, ITfTextInputProcessor, ITfTextInputProcessor_Impl,
-            ITfThreadMgr, TF_ANCHOR_END, TF_ES_READWRITE, TF_ES_SYNC, TF_SELECTION,
+        UI::{
+            Input::KeyboardAndMouse::GetKeyState,
+            TextServices::{
+                ITfContext, ITfEditSession, ITfEditSession_Impl, ITfKeyEventSink,
+                ITfKeyEventSink_Impl, ITfKeystrokeMgr, ITfRange, ITfTextInputProcessor,
+                ITfTextInputProcessor_Impl, ITfThreadMgr, TF_ANCHOR_END, TF_ES_READWRITE,
+                TF_ES_SYNC, TF_SELECTION,
+            },
         },
     },
 };
@@ -247,6 +251,18 @@ impl ITfEditSession_Impl for EditSession_Impl {
     }
 }
 
+/// Leave system/application shortcuts to the focused application. TSF asks
+/// OnTestKeyDown before OnKeyDown, so apply the same modifier guard in both.
+fn has_shortcut_modifier() -> bool {
+    const VK_CONTROL: i32 = 0x11;
+    const VK_MENU: i32 = 0x12;
+    const VK_LWIN: i32 = 0x5B;
+    const VK_RWIN: i32 = 0x5C;
+    [VK_CONTROL, VK_MENU, VK_LWIN, VK_RWIN]
+        .into_iter()
+        .any(|vk| unsafe { GetKeyState(vk) } < 0)
+}
+
 impl ITfKeyEventSink_Impl for TsfService_Impl {
     fn OnSetFocus(&self, _foreground: BOOL) -> Result<()> {
         Ok(())
@@ -258,6 +274,9 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
         wparam: windows::Win32::Foundation::WPARAM,
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
+        if has_shortcut_modifier() {
+            return Ok(BOOL(0));
+        }
         let key = key_from_virtual_key(wparam.0 as u32);
         let state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
         Ok(BOOL(state.engine.test_key(key) as i32))
@@ -281,6 +300,9 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
         let Some(context) = context else {
             return Ok(BOOL(0));
         };
+        if has_shortcut_modifier() {
+            return Ok(BOOL(0));
+        }
         let key = key_from_virtual_key(wparam.0 as u32);
         let (client_id, engine_before, outcome, snapshot) = {
             let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
