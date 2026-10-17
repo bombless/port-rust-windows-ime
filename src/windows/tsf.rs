@@ -48,6 +48,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn identifiers_match_the_go_tip_source() {
+        assert_eq!(
+            CLSID_PORT_RUST_IME,
+            GUID::from_u128(0xc2d4a9b1_7f63_4a85_9e20_4b6d8c1f3072)
+        );
+        assert_eq!(
+            GUID_PORT_RUST_IME_PROFILE,
+            GUID::from_u128(0xe731b5d4_2a90_4f68_ac13_7d5e9b2046f1)
+        );
+    }
+
+    #[test]
     fn lifecycle() {
         let mut adapter = TsfAdapter::default();
         assert_eq!(adapter.state(), ActivationState::Inactive);
