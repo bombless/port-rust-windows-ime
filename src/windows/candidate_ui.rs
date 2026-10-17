@@ -91,7 +91,7 @@ pub fn update(snapshot: &Snapshot) {
             format!("{marker} {}. {}", index + 1, candidate.text)
         })
         .collect();
-    let text = format!("{}\\r\\n{}", snapshot.composition, candidates.join("\\r\\n"));
+    let text = format!("{}\r\n{}", snapshot.composition, candidates.join("\r\n"));
     let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
 
     // Keep the popup compact while allowing candidates to be read vertically
