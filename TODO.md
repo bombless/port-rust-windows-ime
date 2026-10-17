@@ -19,8 +19,9 @@
 - [x] GitHub Actions workflow run #23（提交 `73a5601343d1b4b178d41aa07fb8314b52bc26c6`）已完成且结论为 success；该 workflow 包含 Ubuntu 格式/测试/lint 和 Windows MSVC x64 build job。该结果证明 CI 命令通过，不等同于在真实 TSF 宿主中注册、激活或输入验证。
 - [x] GitHub Actions run #55（提交 `43396db`）的 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build 全部通过。
 - [x] GitHub Actions run #69（提交 `c581bc4`）再次通过 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build；该版本已包含 key-sink 全部透传、避免跨 TSF 调用持锁、恢复 DLL 导出等修正。
-- [x] 提交 `d95d758` / `1a44c74` / `6136099` 将引擎按键预测和正式处理接入 key sink，并让 edit session 在 TSF edit cookie 下通过 `ITfContext::GetSelection` 与 `ITfRange::SetText` 写入组合文本；提交/取消后清除跟踪的组合范围。最新 Windows/Linux CI run #93 已排队，编译结果尚未确认。
-- [ ] 本轮无法在当前执行环境直接运行 Windows Cargo 工具链；最新 Windows/Linux CI run #93 尚在排队。未进行 Windows 实机 TSF 宿主验收。
+- [x] 提交 `d95d758` / `1a44c74` / `6136099` 将引擎按键预测和正式处理接入 key sink，并让 edit session 在 TSF edit cookie 下通过 `ITfContext::GetSelection` 与 `ITfRange::SetText` 写入组合文本；提交/取消后清除跟踪的组合范围。
+- [x] 重新核查 PR #5 当前 head `a30cbbf821ee5b53c5ddb17664d3f828dfa70fed`：GitHub Actions run #97 的 Linux 与 Windows job 均在 `cargo fmt --all -- --check` 失败，日志指出 `src/windows/tsf.rs` 三处格式差异；后续提交 `194f1d1` 已修正这些格式差异并补充虚拟键映射单元测试，需等待新 head 的 CI 结果。
+- [ ] 当前执行环境无法直接运行 Windows Cargo 工具链；本次格式修正提交尚未取得 CI 结果。未进行 Windows 实机 TSF 宿主验收。
 
 ## P0 — 先建立正确的源代码对应关系
 
@@ -62,7 +63,8 @@
 
 ## P1 — 构建、CI 和发布
 
-- [x] GitHub Actions 已在 Linux 与 Windows MSVC x64 执行 `cargo fmt --all -- --check`、`cargo test --all-targets --all-features` 和 `cargo clippy --all-targets --all-features -- -D warnings` 并通过（run #69）；最新文档提交 run #71 待确认。
+- [x] 历史提交在 run #69 中通过 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build；这不代表当前 head 已通过。
+- [ ] 当前 head 的 run #97 在 Linux 与 Windows job 的格式检查阶段失败；修复已提交于 `194f1d1`，新 CI 结果待确认。
 - [x] CI 配置包含 Ubuntu 格式/测试/lint job 和 Windows MSVC x64 build job；push 触发器已覆盖 `feat/**`。
 - [ ] Windows CI 构建通过后，核实生成物确实是可加载的 DLL，并核对导出符号、依赖项和目标架构。
 - [ ] 增加最小安装/注册、卸载/注销脚本或明确步骤；脚本需可重复执行，并谨慎处理管理员权限和注册表。
