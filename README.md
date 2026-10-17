@@ -47,3 +47,17 @@ These identifiers were compared with the native C declarations in `tip/main.go` 
 ## Validation boundary
 
 Do not register this build as a daily-use input method yet. Although the first registration path now exists and the Windows x64 build passes, this remains a partial COM/TSF implementation until registration, activation, and edit-session behavior are verified in a real TSF host. Windows CI and real Windows TSF host validation must be reported separately.
+
+
+## Install the x64 DLL (experimental)
+
+Run PowerShell **as Administrator** on 64-bit Windows. Pass the path to the built or downloaded DLL:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\install.ps1 .\port_rust_windows_ime.dll
+```
+
+For a GitHub Actions build, download the `port-rust-windows-ime-windows-x64` artifact, extract it, then pass the extracted `port_rust_windows_ime.dll` path to the script. The installer invokes the native x64 `regsvr32.exe`, calls the DLL's `DllRegisterServer` export (which registers the COM class and TSF language profile/categories), and checks the resulting COM DLL path and `Apartment` threading model. It fails if the registration command or post-registration checks fail.
+
+This is an experimental registration script, not a production installer. It does not yet provide an uninstall script, and successful registration does not prove that Windows activates the service or that typing works. Real Windows TSF host testing is still required.
