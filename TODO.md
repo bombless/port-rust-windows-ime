@@ -19,8 +19,8 @@
 - [x] GitHub Actions workflow run #23（提交 `73a5601343d1b4b178d41aa07fb8314b52bc26c6`）已完成且结论为 success；该 workflow 包含 Ubuntu 格式/测试/lint 和 Windows MSVC x64 build job。该结果证明 CI 命令通过，不等同于在真实 TSF 宿主中注册、激活或输入验证。
 - [x] GitHub Actions run #55（提交 `43396db`）的 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build 全部通过。
 - [x] GitHub Actions run #69（提交 `c581bc4`）再次通过 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build；该版本已包含 key-sink 全部透传、避免跨 TSF 调用持锁、恢复 DLL 导出等修正。
-- [x] 提交 `d95d758` / `1a44c74` / `6136099` 将引擎按键预测和正式处理接入 key sink，并让 edit session 在 TSF edit cookie 下通过 `ITfContext::GetSelection` 与 `ITfRange::SetText` 写入组合文本；提交/取消后清除跟踪的组合范围。Windows CI run #84 已排队，编译结果尚未确认。
-- [ ] 当前 Windows agent 未安装 Cargo，无法在本地重跑。未进行 Windows 实机 TSF 宿主验收。
+- [x] 提交 `d95d758` / `1a44c74` / `6136099` 将引擎按键预测和正式处理接入 key sink，并让 edit session 在 TSF edit cookie 下通过 `ITfContext::GetSelection` 与 `ITfRange::SetText` 写入组合文本；提交/取消后清除跟踪的组合范围。最新 Windows/Linux CI run #93 已排队，编译结果尚未确认。
+- [ ] 本轮无法在当前执行环境直接运行 Windows Cargo 工具链；最新 Windows/Linux CI run #93 尚在排队。未进行 Windows 实机 TSF 宿主验收。
 
 ## P0 — 先建立正确的源代码对应关系
 
@@ -39,7 +39,7 @@
 - [ ] 完善重复激活/并发调用策略，并在真实 TSF 宿主验证连接与撤销。
 - [x] 增加 `ITfEditSession` COM 对象，并在 `OnKeyDown` 中通过 `ITfContext::RequestEditSession(TF_ES_SYNC | TF_ES_READWRITE)` 请求 TSF 写锁；目前仅验证调用链设计，未声称已能编辑文本。
 - [x] 接通 `ITfKeyEventSink` 的按键测试与处理：测试阶段只调用 `Engine::test_key`；处理阶段调用 `handle_key` 并按结果请求 TSF edit session。仍需增加 COM/TSF 级别测试，确认请求失败时引擎状态回滚。
-- [x] 增加 `ITfEditSession` 与 `ITfContext::RequestEditSession` 同步写锁路径；`DoEditSession` 使用有效 edit cookie 获取选区并调用 `ITfRange::SetText`，更新组合文本，提交或取消时清理范围状态。仍需 Windows 编译核实、验证 range/selection 实际行为，并覆盖锁失败与状态回滚。
+- [x] 增加 `ITfEditSession` 与 `ITfContext::RequestEditSession` 同步写锁路径；`DoEditSession` 使用有效 edit cookie 获取选区并调用 `ITfRange::SetText`，更新组合文本，提交或取消时清理范围状态。仍需 Windows 编译核实、验证 range/selection 实际行为；已加入 edit-session 请求失败时的引擎状态回滚，但仍需测试验证。
 - [ ] 完成 TSF profile、语言/输入法 profile、CLSID、注册表键值、位数匹配、安装/卸载和注册/注销说明。
 - [ ] 检查 panic 不得越过 FFI/COM 边界；处理空指针、无效参数、HRESULT 与所有 unsafe 代码的安全约束。
 - [ ] 让 COM 对象、线程管理器、sink、窗口与资源在停用/卸载时可重复且安全地清理。
