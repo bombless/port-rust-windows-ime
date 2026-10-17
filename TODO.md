@@ -110,6 +110,6 @@
 - [x] Add an explicit popup hide helper for TSF service deactivation/cleanup callers.
 - [ ] Replace the cursor anchor with TSF caret/text extent and clamp to the monitor work area; verify per-monitor DPI.
 - [ ] Move popup ownership to a dedicated UI thread with a message loop and explicit shutdown. Current first pass creates the popup on the TSF callback thread and uses a process-global HWND, so multiple service instances and host-specific reentrancy are not yet supported.
-- [ ] Call the popup hide helper during TSF deactivation and ensure popup resources are destroyed safely.
+- [x] Call the popup hide helper during TSF deactivation; safe HWND destruction and full resource lifecycle still need implementation.
 - [ ] Verify the Windows MSVC build and visually test candidate show/update/hide in a real TSF host. No real-host validation is claimed by this commit.
 - [ ] Candidate popup layout was updated to render candidates vertically with content-based dimensions; this remains compile/host-test pending.
