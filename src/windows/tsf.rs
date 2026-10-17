@@ -8,9 +8,9 @@ use std::{
 };
 
 use windows::{
-    core::{implement, Error, Interface, Result, BOOL, GUID, HRESULT},
+    core::{implement, Error, Interface, Result, GUID, HRESULT},
     Win32::{
-        Foundation::{E_FAIL, E_POINTER, S_FALSE, S_OK},
+        Foundation::{BOOL, E_FAIL, E_POINTER, S_FALSE, S_OK},
         System::Com::{IClassFactory, IClassFactory_Impl},
         UI::TextServices::{
             ITfContext, ITfKeyEventSink, ITfKeyEventSink_Impl, ITfKeystrokeMgr,
