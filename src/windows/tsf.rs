@@ -16,8 +16,7 @@ use windows::{
         UI::TextServices::{
             ITfContext, ITfEditSession, ITfEditSession_Impl, ITfKeyEventSink, ITfKeyEventSink_Impl,
             ITfKeystrokeMgr, ITfRange, ITfTextInputProcessor, ITfTextInputProcessor_Impl,
-            ITfThreadMgr,
-            TF_ES_READWRITE, TF_ES_SYNC, TF_SELECTION,
+            ITfThreadMgr, TF_ES_READWRITE, TF_ES_SYNC, TF_SELECTION,
         },
     },
 };
@@ -211,7 +210,10 @@ impl ITfEditSession_Impl for EditSession_Impl {
             if fetched == 0 {
                 return Err(Error::from(E_FAIL));
             }
-            selection[0].range.clone().ok_or_else(|| Error::from(E_FAIL))?
+            selection[0]
+                .range
+                .clone()
+                .ok_or_else(|| Error::from(E_FAIL))?
         };
         let text = self.text.as_deref().unwrap_or("");
         let wide: Vec<u16> = text.encode_utf16().collect();
@@ -259,7 +261,9 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
         wparam: windows::Win32::Foundation::WPARAM,
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
-        let Some(context) = context else { return Ok(BOOL(0)); };
+        let Some(context) = context else {
+            return Ok(BOOL(0));
+        };
         let key = key_from_virtual_key(wparam.0 as u32);
         let (client_id, engine_before, outcome) = {
             let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
@@ -383,6 +387,21 @@ mod tests {
             GUID_PORT_RUST_IME_PROFILE,
             GUID::from_u128(0xe731b5d4_2a90_4f68_ac13_7d5e9b2046f1)
         );
+    }
+
+    #[test]
+    fn virtual_key_mapping_covers_ime_controls() {
+        assert_eq!(key_from_virtual_key(0x08), Key::Backspace);
+        assert_eq!(key_from_virtual_key(0x1b), Key::Escape);
+        assert_eq!(key_from_virtual_key(0x25), Key::Up);
+        assert_eq!(key_from_virtual_key(0x28), Key::Down);
+        assert_eq!(key_from_virtual_key(0x20), Key::Space);
+        assert_eq!(key_from_virtual_key(0x0d), Key::Enter);
+        assert_eq!(key_from_virtual_key(0x31), Key::Digit(1));
+        assert_eq!(key_from_virtual_key(0x39), Key::Digit(9));
+        assert_eq!(key_from_virtual_key(0x41), Key::Character('A'));
+        assert_eq!(key_from_virtual_key(0x5a), Key::Character('Z'));
+        assert_eq!(key_from_virtual_key(0x70), Key::Other);
     }
 }
 
