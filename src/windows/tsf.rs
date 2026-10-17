@@ -186,31 +186,22 @@ struct EditSession {
 impl ITfEditSession_Impl for EditSession_Impl {
     fn DoEditSession(&self, edit_cookie: u32) -> Result<()> {
         use windows::core::PCWSTR;
-        let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
-        let mut range = if let Some(range) = state.composition_range.clone() {
+        // Do not hold service state across TSF calls: text changes can re-enter callbacks.
+        let existing_range = self.state.lock().map_err(|_| Error::from(E_FAIL))?.composition_range.clone();
+        let mut range = if let Some(range) = existing_range {
             range
         } else {
             let mut selection = [TF_SELECTION::default()];
             let mut fetched = 0u32;
-            unsafe {
-                self.context.GetSelection(edit_cookie, 0, 1, selection.as_mut_ptr(), &mut fetched)?;
-            }
-            if fetched == 0 {
-                return Err(Error::from(E_FAIL));
-            }
+            unsafe { self.context.GetSelection(edit_cookie, 0, 1, selection.as_mut_ptr(), &mut fetched)?; }
+            if fetched == 0 { return Err(Error::from(E_FAIL)); }
             selection[0].range.clone().ok_or_else(|| Error::from(E_FAIL))?
         };
-
         let text = self.text.as_deref().unwrap_or("");
         let wide: Vec<u16> = text.encode_utf16().collect();
-        unsafe {
-            range.SetText(edit_cookie, 0, PCWSTR(wide.as_ptr()), wide.len() as i32)?;
-        }
-        if self.keep_composition {
-            state.composition_range = Some(range);
-        } else {
-            state.composition_range = None;
-        }
+        unsafe { range.SetText(edit_cookie, 0, PCWSTR(wide.as_ptr()), wide.len() as i32)?; }
+        let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+        if self.keep_composition { state.composition_range = Some(range); } else { state.composition_range = None; }
         Ok(())
     }
 }
