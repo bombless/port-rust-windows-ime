@@ -11,9 +11,9 @@ use windows::{
         UI::{
             Input::KeyboardAndMouse::GetCursorPos,
             WindowsAndMessaging::{
-                CreateWindowExW, SetWindowTextW, ShowWindow, SetWindowPos, HWND_TOPMOST,
-                SWP_NOACTIVATE, WS_BORDER, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-                WS_EX_TOPMOST, WS_POPUP, SS_LEFT, SW_HIDE, SW_SHOWNOACTIVATE,
+                CreateWindowExW, SetWindowPos, SetWindowTextW, ShowWindow, HWND_TOPMOST, SS_LEFT,
+                SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, WS_BORDER, WS_EX_NOACTIVATE,
+                WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
             },
         },
     },
@@ -56,7 +56,11 @@ pub fn update(snapshot: &Snapshot) {
         .take(9)
         .enumerate()
         .map(|(index, candidate)| {
-            let marker = if index == snapshot.selected { "▶" } else { " " };
+            let marker = if index == snapshot.selected {
+                "▶"
+            } else {
+                " "
+            };
             format!("{marker} {}. {}", index + 1, candidate.text)
         })
         .collect();
@@ -65,7 +69,11 @@ pub fn update(snapshot: &Snapshot) {
 
     // Keep the popup compact while allowing candidates to be read vertically
     // instead of clipping a single long horizontal row.
-    let longest_line = text.lines().map(|line| line.chars().count()).max().unwrap_or(0);
+    let longest_line = text
+        .lines()
+        .map(|line| line.chars().count())
+        .max()
+        .unwrap_or(0);
     let width = (longest_line as i32 * 16 + 28).clamp(220, 520);
     let candidate_count = candidates.len() as i32;
     let height = (candidate_count * 24 + 36).clamp(60, 260);
@@ -104,15 +112,7 @@ pub fn update(snapshot: &Snapshot) {
     };
     unsafe {
         let _ = SetWindowTextW(hwnd, PCWSTR(wide.as_ptr()));
-        let _ = SetWindowPos(
-            hwnd,
-            HWND_TOPMOST,
-            x,
-            y,
-            width,
-            height,
-            SWP_NOACTIVATE,
-        );
+        let _ = SetWindowPos(hwnd, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE);
         ShowWindow(hwnd, SW_SHOWNOACTIVATE);
     }
 }
