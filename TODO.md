@@ -10,6 +10,13 @@
 - [x] 添加项目 README。
 - [ ] 上述代码尚未确认通过编译、测试或 Windows 实机验证；不要把骨架视为可用的 TSF 输入法。
 
+## 已完成的本轮检查
+
+- [x] 核对 Go 源仓库的 `go.mod`、README 与 `tip/` 目录清单；确认核心文件包括 `tip/main.go`、`tip/strategy.go`、`tip/composition.go`、`tip/candidate_ui.go`、`tip/candidate_presenter.go` 及 `tip/pinyin_simp.dict.yaml`（约 1.27 MB）。完整迁移映射仍未完成。
+- [x] 修正 `Engine::test_key` 与 `Engine::handle_key` 的按键预测不一致：组合期间非 ASCII/非字母字符和数字 `0`/越界数字不再被错误预测为消费；根据 Go `reduceIME` 进一步对齐空候选时的方向键/数字键处理，以及 Enter/Space 提交原始组合串的行为。
+- [x] 扩充纯 Rust 单元测试，覆盖预测无副作用、预测与处理一致性、数字候选选择、退格/取消及实例状态隔离。
+- [ ] 当前修改尚未由本会话中的本地 Rust 工具链实际编译或执行；以 CI 结果为准。
+
 ## P0 — 先建立正确的源代码对应关系
 
 - [ ] 完整检查 Go 源仓库的目录树、README、`go.mod`、所有 TSF/COM 实现、输入状态机、候选 UI、词典与测试。
