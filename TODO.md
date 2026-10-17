@@ -62,7 +62,8 @@
 ## P1 — 候选窗与 UI
 
 - [ ] 阅读并迁移 Go 的 `tip/candidate_ui.go`、`tip/candidate_presenter.go` 及其调用方，确认 UI 生命周期和交互细节。
-- [ ] 实现候选窗显示、隐藏、定位、选中项、翻页/候选选择、DPI 与多显示器行为（以源实现实际支持为准）。
+- [x] 增加第一版原生 Win32 候选 popup：显示拼音组合与前 9 个候选，标记当前选中项；无候选或 composition 结束时隐藏，并跟随鼠标位置作为临时锚点。
+- [ ] 将候选窗定位改为 TSF caret/text extent，补齐 DPI、多显示器工作区边界、候选点击/翻页和 UI 线程生命周期；当前 popup 仅是可见性原型，不能视为完整候选 UI。
 - [ ] 核实窗口创建线程、消息循环、焦点、窗口销毁和 TSF 上下文的关系，避免 UI 线程与 COM 线程问题。
 - [ ] 在真实 Windows TSF 宿主中验证候选窗，而非仅依赖模拟器或编译成功。
 
@@ -99,3 +100,13 @@
 - [ ] Add cleanup for categories already registered if a later category registration fails.
 - [ ] Verify registration/unregistration idempotence, elevation/registry behavior, and actual profile visibility on Windows.
 - [ ] Do not treat CI compilation as proof of real TSF activation or text insertion.
+
+
+## Candidate popup first pass (2026-10-17)
+
+- [x] Add `src/windows/candidate_ui.rs`: create a non-activating topmost native STATIC popup, display the current composition plus up to nine candidates, mark the selected candidate, and hide when the snapshot is not visible.
+- [x] Publish immutable engine snapshots from the TSF key sink after successful handling, including selection-only key updates.
+- [x] Add the Win32 keyboard/mouse feature needed for fallback cursor anchoring.
+- [ ] Replace the cursor anchor with TSF caret/text extent and clamp to the monitor work area; verify per-monitor DPI.
+- [ ] Move popup ownership to a dedicated UI thread with a message loop and explicit shutdown. Current first pass creates the popup on the TSF callback thread and uses a process-global HWND, so multiple service instances and host-specific reentrancy are not yet supported.
+- [ ] Verify the Windows MSVC build and visually test candidate show/update/hide in a real TSF host. No real-host validation is claimed by this commit.
