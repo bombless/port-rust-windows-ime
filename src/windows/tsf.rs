@@ -11,10 +11,11 @@ use crate::engine::{Engine, Key, KeyOutcome};
 use windows::Win32::{
     Foundation::{COLORREF, HWND, RECT},
     Graphics::Gdi::{
-        CreateBitmap, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, DeleteDC,
-        DeleteObject, DrawTextW, GetDC, PatBlt, ReleaseDC, SelectObject, SetBkMode, SetTextColor,
-        CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER,
-        DT_SINGLELINE, DT_VCENTER, FW_BOLD, OUT_DEFAULT_PRECIS, TRANSPARENT, WHITENESS,
+        CreateBitmap, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, CreateSolidBrush,
+        DeleteDC, DeleteObject, DrawTextW, FillRect, GetDC, PatBlt, ReleaseDC, SelectObject,
+        SetBkMode, SetTextColor, BLACKNESS, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS,
+        DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER,
+        FF_DONTCARE, FW_BOLD, OUT_DEFAULT_PRECIS, TRANSPARENT,
     },
     UI::WindowsAndMessaging::{
         CreateIconIndirect, GetSystemMetrics, HICON, ICONINFO, SM_CXSMICON, SM_CYSMICON,
@@ -346,58 +347,67 @@ impl ITfLangBarItemButton_Impl for ModeLangBarItem_Impl {
     }
 }
 
-/// Create a small, system-sized language-bar icon with the current mode glyph.
+/// Create a small language-bar icon with a solid background and a centered mode glyph.
 unsafe fn create_text_icon(text: &str) -> Result<HICON> {
     let hwnd = HWND::default();
-    let hdc_screen = GetDC(hwnd);
-    if hdc_screen.is_invalid() {
+    let screen = GetDC(hwnd);
+    if screen.is_invalid() {
         return Err(Error::from_win32());
     }
 
-    let hdc_mem = CreateCompatibleDC(hdc_screen);
-    if hdc_mem.is_invalid() {
-        ReleaseDC(hwnd, hdc_screen);
-        return Err(Error::from_win32());
-    }
-
-    let width = GetSystemMetrics(SM_CXSMICON).max(16);
-    let height = GetSystemMetrics(SM_CYSMICON).max(16);
-    let hbm_color = CreateCompatibleBitmap(hdc_screen, width, height);
-    let hbm_mask = CreateBitmap(width, height, 1, 1, None);
-    if hbm_color.is_invalid() || hbm_mask.is_invalid() {
-        if !hbm_color.is_invalid() {
-            let _ = DeleteObject(hbm_color);
+    let cx = GetSystemMetrics(SM_CXSMICON);
+    let cy = GetSystemMetrics(SM_CYSMICON);
+    let size = if cx > 0 && cy > 0 { cx.min(cy) } else { 16 };
+    let memory = CreateCompatibleDC(screen);
+    let color = CreateCompatibleBitmap(screen, size, size);
+    let mask = CreateBitmap(size, size, 1, 1, None);
+    if memory.is_invalid() || color.is_invalid() || mask.is_invalid() {
+        if !mask.is_invalid() {
+            let _ = DeleteObject(mask);
         }
-        if !hbm_mask.is_invalid() {
-            let _ = DeleteObject(hbm_mask);
+        if !color.is_invalid() {
+            let _ = DeleteObject(color);
         }
-        let _ = DeleteDC(hdc_mem);
-        ReleaseDC(hwnd, hdc_screen);
+        if !memory.is_invalid() {
+            let _ = DeleteDC(memory);
+        }
+        ReleaseDC(hwnd, screen);
         return Err(Error::from_win32());
     }
 
-    let hdc_mask = CreateCompatibleDC(hdc_screen);
-    if hdc_mask.is_invalid() {
-        let _ = DeleteObject(hbm_color);
-        let _ = DeleteObject(hbm_mask);
-        let _ = DeleteDC(hdc_mem);
-        ReleaseDC(hwnd, hdc_screen);
+    // Use an all-black monochrome mask (opaque everywhere) so the icon has a
+    // predictable solid background instead of relying on uninitialized bits.
+    let old = SelectObject(memory, mask);
+    let _ = PatBlt(memory, 0, 0, size, size, BLACKNESS);
+    SelectObject(memory, old);
+
+    let old = SelectObject(memory, color);
+    let bounds = RECT {
+        left: 0,
+        top: 0,
+        right: size,
+        bottom: size,
+    };
+    let background = CreateSolidBrush(COLORREF(0x003B3B3B));
+    if background.is_invalid() {
+        SelectObject(memory, old);
+        let _ = DeleteObject(color);
+        let _ = DeleteObject(mask);
+        let _ = DeleteDC(memory);
+        ReleaseDC(hwnd, screen);
         return Err(Error::from_win32());
     }
+    FillRect(memory, &bounds, background);
+    let _ = DeleteObject(background);
 
-    let old_bm = SelectObject(hdc_mem, hbm_color);
-    let old_mask = SelectObject(hdc_mask, hbm_mask);
-    // A white AND mask makes the background transparent; black glyph pixels
-    // make only the text itself visible in the resulting icon.
-    let _ = PatBlt(hdc_mask, 0, 0, width, height, WHITENESS);
-    SetBkMode(hdc_mem, TRANSPARENT);
-    SetTextColor(hdc_mem, COLORREF(0x00FFFFFF));
-    SetBkMode(hdc_mask, TRANSPARENT);
-    SetTextColor(hdc_mask, COLORREF(0x00000000));
-
-    let face: Vec<u16> = "Microsoft YaHei".encode_utf16().chain(Some(0)).collect();
+    SetBkMode(memory, TRANSPARENT);
+    SetTextColor(memory, COLORREF(0x00FFFFFF));
+    let face: Vec<u16> = "Microsoft YaHei UI".encode_utf16().chain(Some(0)).collect();
+    // A negative height requests character height; scale it proportionally to
+    // the icon rather than using a full-height font that clips CJK glyphs.
+    let font_height = -(size * 72 / 100);
     let font = CreateFontW(
-        height - 2,
+        font_height,
         0,
         0,
         0,
@@ -409,58 +419,43 @@ unsafe fn create_text_icon(text: &str) -> Result<HICON> {
         OUT_DEFAULT_PRECIS.0 as u32,
         CLIP_DEFAULT_PRECIS.0 as u32,
         CLEARTYPE_QUALITY.0 as u32,
-        DEFAULT_PITCH.0 as u32,
+        (DEFAULT_PITCH.0 | FF_DONTCARE.0) as u32,
         windows::core::PCWSTR(face.as_ptr()),
     );
-    let old_font = SelectObject(hdc_mem, font);
-    let old_font_mask = SelectObject(hdc_mask, font);
-    let mut rect = RECT {
-        left: 0,
-        top: 0,
-        right: width,
-        bottom: height,
-    };
+    if font.is_invalid() {
+        SelectObject(memory, old);
+        let _ = DeleteObject(color);
+        let _ = DeleteObject(mask);
+        let _ = DeleteDC(memory);
+        ReleaseDC(hwnd, screen);
+        return Err(Error::from_win32());
+    }
+    let old_font = SelectObject(memory, font);
     let mut wide_text: Vec<u16> = text.encode_utf16().collect();
+    let mut text_bounds = bounds;
     DrawTextW(
-        hdc_mem,
+        memory,
         &mut wide_text,
-        &mut rect,
-        DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+        &mut text_bounds,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
     );
-    let mut mask_text: Vec<u16> = text.encode_utf16().collect();
-    let mut mask_rect = RECT {
-        left: 0,
-        top: 0,
-        right: width,
-        bottom: height,
-    };
-    DrawTextW(
-        hdc_mask,
-        &mut mask_text,
-        &mut mask_rect,
-        DT_CENTER | DT_VCENTER | DT_SINGLELINE,
-    );
-
-    SelectObject(hdc_mem, old_font);
-    SelectObject(hdc_mask, old_font_mask);
+    SelectObject(memory, old_font);
+    SelectObject(memory, old);
     let _ = DeleteObject(font);
-    SelectObject(hdc_mem, old_bm);
-    SelectObject(hdc_mask, old_mask);
-    let _ = DeleteDC(hdc_mask);
-    let _ = DeleteDC(hdc_mem);
-    ReleaseDC(hwnd, hdc_screen);
+    let _ = DeleteDC(memory);
+    ReleaseDC(hwnd, screen);
 
-    let icon_info = ICONINFO {
+    let info = ICONINFO {
         fIcon: BOOL(1),
         xHotspot: 0,
         yHotspot: 0,
-        hbmMask: hbm_mask,
-        hbmColor: hbm_color,
+        hbmMask: mask,
+        hbmColor: color,
     };
-    let result = CreateIconIndirect(&icon_info);
-    let _ = DeleteObject(hbm_color);
-    let _ = DeleteObject(hbm_mask);
-    result
+    let icon = CreateIconIndirect(&info);
+    let _ = DeleteObject(color);
+    let _ = DeleteObject(mask);
+    icon
 }
 
 /// A write operation executed only while TSF grants the edit cookie.
