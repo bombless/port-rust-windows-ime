@@ -218,6 +218,50 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
     }
 }
 
+
+/// COM entry point called by COM activation for an in-process class factory.
+///
+/// # Safety
+/// COM callers must pass valid pointers according to the `DllGetClassObject` ABI.
+#[no_mangle]
+pub unsafe extern "system" fn DllGetClassObject(
+    clsid: *const GUID,
+    iid: *const GUID,
+    out: *mut *mut c_void,
+) -> HRESULT {
+    match catch_unwind(AssertUnwindSafe(|| {
+        if out.is_null() {
+            return E_POINTER;
+        }
+        *out = std::ptr::null_mut();
+        if clsid.is_null() || iid.is_null() {
+            return E_POINTER;
+        }
+        if *clsid != CLSID_PORT_RUST_IME {
+            return HRESULT(0x80040111u32 as i32); // CLASS_E_CLASSNOTAVAILABLE
+        }
+
+        let factory: IClassFactory = ClassFactory::new().into();
+        (Interface::vtable(&factory).base__.QueryInterface)(factory.as_raw(), iid, out)
+    })) {
+        Ok(hr) => hr,
+        Err(_) => E_FAIL,
+    }
+}
+
+/// Reports whether this DLL has outstanding COM objects or server locks.
+///
+/// # Safety
+/// This function has no pointer arguments and may be called by the COM loader.
+#[no_mangle]
+pub unsafe extern "system" fn DllCanUnloadNow() -> HRESULT {
+    if LIVE_OBJECTS.load(Ordering::SeqCst) == 0 && SERVER_LOCKS.load(Ordering::SeqCst) == 0 {
+        S_OK
+    } else {
+        S_FALSE
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
