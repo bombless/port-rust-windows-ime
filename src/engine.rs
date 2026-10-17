@@ -268,4 +268,11 @@ mod tests {
         type_text(&mut e, "xiexie");
         assert!(e.snapshot().candidates.iter().any(|c| c.text == "谢谢"));
     }
+
+    #[test]
+    fn loads_entries_from_rime_dictionary_and_normalizes_spaces() {
+        let mut e = Engine::new();
+        type_text(&mut e, "kafei");
+        assert!(e.snapshot().candidates.iter().any(|c| c.text == "咖啡"));
+    }
 }
