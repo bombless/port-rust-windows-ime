@@ -54,7 +54,7 @@ fn caret_anchor() -> Option<(i32, i32)> {
             x: info.rcCaret.left,
             y: info.rcCaret.bottom,
         };
-        if ClientToScreen(info.hwndCaret, &mut point).is_err() {
+        if !ClientToScreen(info.hwndCaret, &mut point).as_bool() {
             return None;
         }
         Some((point.x, point.y))
