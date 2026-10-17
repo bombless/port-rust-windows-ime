@@ -10,8 +10,8 @@ use std::{
 use windows::{
     core::{implement, Error, HRESULT, Interface, Result, BOOL, GUID},
     Win32::{
-        Foundation::{E_FAIL, E_INVALIDARG, E_NOINTERFACE, E_POINTER, S_FALSE, S_OK},
-        System::Com::{IClassFactory, IClassFactory_Impl, IClassFactory_Vtbl},
+        Foundation::{E_FAIL, E_POINTER, S_FALSE, S_OK},
+        System::Com::{IClassFactory, IClassFactory_Impl},
         UI::TextServices::{
             ITfContext, ITfKeyEventSink, ITfKeyEventSink_Impl, ITfKeystrokeMgr,
             ITfTextInputProcessor, ITfTextInputProcessor_Impl, ITfThreadMgr,
@@ -47,7 +47,9 @@ impl Drop for ClassFactory {
 }
 
 #[implement(IClassFactory)]
-impl ClassFactory_Impl {
+struct ClassFactory;
+
+impl IClassFactory_Impl for ClassFactory_Impl {
     fn CreateInstance(
         &self,
         outer: Option<&windows::core::IUnknown>,
