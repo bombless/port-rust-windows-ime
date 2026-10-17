@@ -62,7 +62,7 @@ type ReleaseFn = unsafe extern "system" fn(*mut c_void) -> u32;
 type RegisterFn = unsafe extern "system" fn(*mut c_void, *const GUID) -> HRESULT;
 type UnregisterFn = unsafe extern "system" fn(*mut c_void, *const GUID) -> HRESULT;
 type AddLanguageProfileFn = unsafe extern "system" fn(
-    *mut c_void, *const GUID, u16, *const GUID, *const u16, u32, *const u16, u32, u16,
+    *mut c_void, *const GUID, u16, *const GUID, *const u16, u32, *const u16, u32, u32,
 ) -> HRESULT;
 type RemoveLanguageProfileFn =
     unsafe extern "system" fn(*mut c_void, *const GUID, u16, *const GUID) -> HRESULT;
@@ -167,6 +167,8 @@ unsafe fn register_tip_inner() -> HRESULT {
         }
     };
     let register_category: CategoryFn = method(categories.0, 3);
+    let unregister_category: CategoryFn = method(categories.0, 4);
+    let mut registered_categories: Vec<GUID> = Vec::new();
     for category in CATEGORIES.iter() {
         let category_hr = register_category(
             categories.0,
@@ -175,11 +177,19 @@ unsafe fn register_tip_inner() -> HRESULT {
             &CLSID_PORT_RUST_IME,
         );
         if !succeeded(category_hr) {
-            // Keep the first failure visible to regsvr32; unregister the profile
-            // below rather than claiming registration succeeded partially.
+            // Roll back only categories successfully added by this attempt.
+            for registered in registered_categories.iter() {
+                let _ = unregister_category(
+                    categories.0,
+                    &CLSID_PORT_RUST_IME,
+                    registered,
+                    &CLSID_PORT_RUST_IME,
+                );
+            }
             let _ = unregister(profiles.0, &CLSID_PORT_RUST_IME);
             return category_hr;
         }
+        registered_categories.push(*category);
     }
     S_OK
 }
