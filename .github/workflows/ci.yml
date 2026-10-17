@@ -37,3 +37,18 @@ jobs:
       - run: cargo test --all-targets --all-features
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo build --release --target x86_64-pc-windows-msvc
+      - name: Verify DLL output
+        shell: pwsh
+        run: |
+          $dll = "target/x86_64-pc-windows-msvc/release/port_rust_windows_ime.dll"
+          if (!(Test-Path $dll)) {
+            throw "Expected DLL was not produced: $dll"
+          }
+          Get-Item $dll | Select-Object FullName, Length
+      - name: Upload Windows x64 DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: port-rust-windows-ime-windows-x64
+          path: target/x86_64-pc-windows-msvc/release/port_rust_windows_ime.dll
+          if-no-files-found: error
+          retention-days: 14
