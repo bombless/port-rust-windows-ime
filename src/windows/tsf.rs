@@ -142,18 +142,17 @@ impl ITfTextInputProcessor_Impl for TsfService_Impl {
             return Ok(());
         }
 
-        // Clear active state even if TSF reports an unadvise failure, so a
-        // later activation can retry without retaining a stale manager pointer.
-        let unadvise = state
-            .manager
-            .as_ref()
-            .map(|manager| unsafe { manager.UnadviseKeyEventSink(state.client_id) })
-            .unwrap_or(Ok(()));
+        // Keep the manager and active flag if TSF refuses to unadvise. This
+        // preserves the only handle that can retry cleanup instead of silently
+        // losing the registration state.
+        if let Some(manager) = state.manager.as_ref() {
+            unsafe { manager.UnadviseKeyEventSink(state.client_id)?; }
+        }
         state.manager = None;
         state.client_id = 0;
         state.active = false;
         state.engine = Engine::new();
-        unadvise
+        Ok(())
     }
 }
 
