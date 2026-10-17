@@ -217,6 +217,7 @@ fn lookup(code: &str) -> Vec<Candidate> {
         }
     }
     for (pinyin, word) in rime_entries() {
+        if candidates.len() >= 100 { break; }
         if (pinyin == code || pinyin.starts_with(code))
             && !candidates.iter().any(|candidate| candidate.text == *word)
         {
