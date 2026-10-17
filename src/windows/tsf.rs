@@ -196,7 +196,7 @@ impl ITfEditSession_Impl for EditSession_Impl {
             .map_err(|_| Error::from(E_FAIL))?
             .composition_range
             .clone();
-        let mut range = if let Some(range) = existing_range {
+        let range = if let Some(range) = existing_range {
             range
         } else {
             let mut selection = [TF_SELECTION::default()];
@@ -210,8 +210,9 @@ impl ITfEditSession_Impl for EditSession_Impl {
             }
             selection[0]
                 .range
-                .clone()
+                .as_ref()
                 .ok_or_else(|| Error::from(E_FAIL))?
+                .clone()
         };
         let text = self.text.as_deref().unwrap_or("");
         let wide: Vec<u16> = text.encode_utf16().collect();
