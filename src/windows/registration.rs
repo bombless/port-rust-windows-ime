@@ -8,7 +8,7 @@ use std::{
     panic::{catch_unwind, AssertUnwindSafe},
 };
 
-use windows::core::{HRESULT, GUID};
+use windows::core::{GUID, HRESULT};
 
 use super::tsf::CLSID_PORT_RUST_IME;
 
@@ -23,11 +23,7 @@ const GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT: u32 = 0x0000_0002;
 
 #[link(name = "kernel32")]
 unsafe extern "system" {
-    fn GetModuleHandleExW(
-        flags: u32,
-        module_name: *const u16,
-        module: *mut *mut c_void,
-    ) -> i32;
+    fn GetModuleHandleExW(flags: u32, module_name: *const u16, module: *mut *mut c_void) -> i32;
     fn GetModuleFileNameW(module: *mut c_void, filename: *mut u16, size: u32) -> u32;
 }
 
