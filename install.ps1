@@ -72,4 +72,3 @@ if ($threadingModel -ne 'Apartment') {
 
 Write-Host 'COM DLL registration verified.' -ForegroundColor Green
 Write-Host 'If the profile does not appear immediately, sign out and back in or restart Windows.'
-Write-Warning 'Registration does not prove that TSF activation or text input works; validate on a real Windows host.'
