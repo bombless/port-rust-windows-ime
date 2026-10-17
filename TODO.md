@@ -104,9 +104,12 @@
 
 ## Candidate popup first pass (2026-10-17)
 
-- [x] Add `src/windows/candidate_ui.rs`: create a non-activating topmost native STATIC popup, display the current composition plus up to nine candidates, mark the selected candidate, and hide when the snapshot is not visible.
+- [x] Add `src/windows/candidate_ui.rs`: create a non-activating topmost native STATIC popup, display the current composition and up to nine candidates on separate lines, mark the selected candidate, size the popup based on its content, and hide when the snapshot is not visible.
 - [x] Publish immutable engine snapshots from the TSF key sink after successful handling, including selection-only key updates.
 - [x] Add the Win32 keyboard/mouse feature needed for fallback cursor anchoring.
+- [x] Add an explicit popup hide helper for TSF service deactivation/cleanup callers.
 - [ ] Replace the cursor anchor with TSF caret/text extent and clamp to the monitor work area; verify per-monitor DPI.
 - [ ] Move popup ownership to a dedicated UI thread with a message loop and explicit shutdown. Current first pass creates the popup on the TSF callback thread and uses a process-global HWND, so multiple service instances and host-specific reentrancy are not yet supported.
+- [ ] Call the popup hide helper during TSF deactivation and ensure popup resources are destroyed safely.
 - [ ] Verify the Windows MSVC build and visually test candidate show/update/hide in a real TSF host. No real-host validation is claimed by this commit.
+- [ ] Candidate popup layout was updated to render candidates vertically with content-based dimensions; this remains compile/host-test pending.
