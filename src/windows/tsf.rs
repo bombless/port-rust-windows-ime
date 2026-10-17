@@ -130,14 +130,18 @@ impl ITfTextInputProcessor_Impl for TsfService_Impl {
         let keystroke_mgr: ITfKeystrokeMgr = thread_mgr.cast()?;
         let sink: ITfKeyEventSink = self.to_interface();
 
-        let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
-        if state.active {
-            return Err(Error::from(HRESULT(0x8001010Du32 as i32))); // RPC_E_CANTCALLOUT_ININPUTSYNCCALL
+        {
+            let state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+            if state.active {
+                return Err(Error::from(HRESULT(0x8000FFFFu32 as i32))); // E_UNEXPECTED
+            }
         }
 
+        // Advise can re-enter the sink; never hold the state mutex across COM calls.
         unsafe {
             keystroke_mgr.AdviseKeyEventSink(client_id, &sink, BOOL(1))?;
         }
+        let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
         state.manager = Some(keystroke_mgr);
         state.client_id = client_id;
         state.active = true;
@@ -145,19 +149,23 @@ impl ITfTextInputProcessor_Impl for TsfService_Impl {
     }
 
     fn Deactivate(&self) -> Result<()> {
-        let mut state = self.0.state.lock().map_err(|_| Error::from(E_FAIL))?;
-        if !state.active {
-            return Ok(());
-        }
+        let (manager, client_id) = {
+            let state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+            if !state.active {
+                return Ok(());
+            }
+            (state.manager.clone(), state.client_id)
+        };
 
-        // Keep the manager and active flag if TSF refuses to unadvise. This
-        // preserves the only handle that can retry cleanup instead of silently
-        // losing the registration state.
-        if let Some(manager) = state.manager.as_ref() {
+        // Unadvise can wait for callbacks that need this mutex. Release it before
+        // calling TSF, and retain the registration state if unadvising fails.
+        if let Some(manager) = manager {
             unsafe {
-                manager.UnadviseKeyEventSink(state.client_id)?;
+                manager.UnadviseKeyEventSink(client_id)?;
             }
         }
+
+        let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
         state.manager = None;
         state.client_id = 0;
         state.active = false;
@@ -177,7 +185,7 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
         wparam: windows::Win32::Foundation::WPARAM,
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
-        let state = self.0.state.lock().map_err(|_| Error::from(E_FAIL))?;
+        let state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
         Ok(BOOL(i32::from(state.engine.test_key(vk_to_key(wparam.0)))))
     }
 
@@ -196,7 +204,7 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
         wparam: windows::Win32::Foundation::WPARAM,
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
-        let mut state = self.0.state.lock().map_err(|_| Error::from(E_FAIL))?;
+        let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
         let key = vk_to_key(wparam.0);
         if !state.engine.test_key(key) {
             return Ok(BOOL(0));
