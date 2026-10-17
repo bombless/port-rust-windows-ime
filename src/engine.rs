@@ -69,10 +69,7 @@ impl Engine {
 
         match key {
             Key::Character(c) => c.is_ascii_alphabetic(),
-            Key::Backspace
-            | Key::Escape
-            | Key::Space
-            | Key::Enter => true,
+            Key::Backspace | Key::Escape | Key::Space | Key::Enter => true,
             Key::Up | Key::Down => !self.candidates.is_empty(),
             Key::Digit(n @ 1..=9) => usize::from(n - 1) < self.candidates.len(),
             Key::Digit(_) | Key::Other => false,
@@ -269,7 +266,10 @@ mod tests {
         assert!(!no_candidates.test_key(Key::Up));
         assert!(!no_candidates.test_key(Key::Digit(1)));
         assert_eq!(no_candidates.handle_key(Key::Up), KeyOutcome::PassThrough);
-        assert_eq!(no_candidates.handle_key(Key::Digit(1)), KeyOutcome::PassThrough);
+        assert_eq!(
+            no_candidates.handle_key(Key::Digit(1)),
+            KeyOutcome::PassThrough
+        );
         assert_eq!(
             no_candidates.handle_key(Key::Enter),
             KeyOutcome::Commit("a".into())
