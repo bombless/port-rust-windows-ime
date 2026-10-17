@@ -9,10 +9,9 @@ use windows::{
     Win32::{
         Foundation::{HWND, POINT},
         UI::{
-            Input::KeyboardAndMouse::GetCursorPos,
             WindowsAndMessaging::{
-                CreateWindowExW, SetWindowPos, SetWindowTextW, ShowWindow, HWND_TOPMOST, SS_LEFT,
-                SWP_NOACTIVATE, SW_HIDE, SW_SHOWNOACTIVATE, WS_BORDER, WS_EX_NOACTIVATE,
+                CreateWindowExW, GetCursorPos, SetWindowPos, SetWindowTextW, ShowWindow,
+                HWND_TOPMOST, SWP_NOACTIVATE, SW_HIDE, SW_SHOWNOACTIVATE, WS_BORDER, WS_EX_NOACTIVATE,
                 WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
             },
         },
@@ -88,7 +87,7 @@ pub fn update(snapshot: &Snapshot) {
                 WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                 w!("STATIC"),
                 PCWSTR(wide.as_ptr()),
-                WS_POPUP | WS_BORDER | SS_LEFT,
+                WS_POPUP | WS_BORDER,
                 80,
                 80,
                 width,
