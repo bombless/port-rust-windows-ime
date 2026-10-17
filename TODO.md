@@ -108,8 +108,17 @@
 - [x] Publish immutable engine snapshots from the TSF key sink after successful handling, including selection-only key updates.
 - [x] Add the Win32 keyboard/mouse feature needed for fallback cursor anchoring.
 - [x] Add an explicit popup hide helper for TSF service deactivation/cleanup callers.
-- [ ] Replace the cursor anchor with TSF caret/text extent and clamp to the monitor work area; verify per-monitor DPI.
+- [x] Prefer the focused GUI caret (GetGUIThreadInfo + ClientToScreen) over the cursor when positioning the popup; retain cursor fallback for hosts without a reported caret.
+- [ ] Replace the GUI-caret approximation with the exact TSF caret/text extent when available, clamp to the monitor work area, and verify per-monitor DPI.
 - [ ] Move popup ownership to a dedicated UI thread with a message loop and explicit shutdown. Current first pass creates the popup on the TSF callback thread and uses a process-global HWND, so multiple service instances and host-specific reentrancy are not yet supported.
 - [x] Call the popup hide helper during TSF deactivation; safe HWND destruction and full resource lifecycle still need implementation.
 - [ ] Verify the Windows MSVC build and visually test candidate show/update/hide in a real TSF host. No real-host validation is claimed by this commit.
 - [ ] Candidate popup layout was updated to render candidates vertically with content-based dimensions; this remains compile/host-test pending.
+
+
+## Candidate popup caret positioning follow-up (2026-10-17)
+
+- [x] Candidate popup now anchors to the focused GUI caret rectangle converted to screen coordinates, following the Go presenter’s caret-first strategy; mouse position is only a fallback.
+- [ ] Compare positioning behavior against the Go implementation in real TSF hosts, especially controls that do not expose a GUI caret.
+- [ ] Clamp the popup to the active monitor work area and validate negative virtual-screen coordinates, multi-monitor layouts, and per-monitor DPI scaling.
+- [ ] Verify Windows MSVC CI and visually test candidate placement in a real host; this change has not been built or visually validated in this session.
