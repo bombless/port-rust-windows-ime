@@ -8,7 +8,7 @@
 - [x] 添加初步输入状态机：`src/engine.rs`，包含按键/候选/快照类型、预测按键结果、基础组合输入与选择逻辑、少量内置示例词和单元测试。
 - [x] 添加 Windows 模块骨架：`src/windows/mod.rs`、`src/windows/tsf.rs`。
 - [x] 添加项目 README。
-- [ ] 上述代码尚未全部确认通过编译、测试或 Windows 实机验证；不要把骨架视为可用的 TSF 输入法。
+- [ ] 完整输入法尚未完成；新增 COM/TSF 代码仍须由 Windows CI 编译验证，并在真实 TSF 宿主验收。
 
 ## 本轮实际核查与改动（2026-10-17）
 
@@ -28,11 +28,14 @@
 
 ## P0 — 实现真正可加载的 TSF COM server
 
-- [ ] 实现正确 ABI 的 COM 类工厂与 DLL 导出（至少按 TSF 需要实现 `DllGetClassObject`、`DllCanUnloadNow`；确认是否需要并实现注册/注销导出）。
-- [ ] 实现所需 TSF COM 接口，至少逐项核对并完成 `ITfTextInputProcessor`、`ITfKeyEventSink` 及必要接口；使用正确的 vtable/ABI、HRESULT、引用计数和对象生命周期。
-- [ ] 实现 TSF 激活/停用、线程管理器连接/断开、键盘事件 sink 的 advise/unadvise，并正确处理失败路径和重复调用。
+- [x] 增加 `IClassFactory`、`DllGetClassObject`、`DllCanUnloadNow` 的第一版实现；通过 `#[implement]` 生成 COM vtable，并跟踪活动对象和 `LockServer` 计数（待 Windows CI 验证）。
+- [ ] 补充 `DllRegisterServer` / `DllUnregisterServer`、注册表与 TSF profile 注册/注销导出。
+- [x] 增加 `ITfTextInputProcessor`、`ITfKeyEventSink` 的第一版 windows-rs `#[implement]` 实现；键盘测试路径只预测，处理路径才推进每实例引擎状态（待 Windows CI 验证）。
+- [ ] 对 COM 接口实现做编译和 ABI 审核，完善 `ITfTextInputProcessorEx` 兼容性。
+- [x] 激活时 `AdviseKeyEventSink`、停用时 `UnadviseKeyEventSink`；停用撤销失败时保留 manager/active 状态，允许再次尝试（待 Windows CI 验证）。
+- [ ] 完善重复激活/并发调用策略，并在真实 TSF 宿主验证连接与撤销。
 - [ ] 实现 `ITfKeyEventSink` 的按键测试与处理：测试阶段不修改输入状态；处理阶段才消费按键并推进状态。
-- [ ] 通过 TSF edit sessions 在正确的上下文中读写组合文本、提交文本、删除文本；覆盖同步/异步 session 的失败处理及文档锁要求。
+- [ ] 当前按键 sink 尚未写入文档：实现 `ITfEditSession` 与 `ITfContext::RequestEditSession`，在有效文档锁内更新/提交/删除组合文本，并覆盖同步/异步请求及锁失败。
 - [ ] 完成 TSF profile、语言/输入法 profile、CLSID、注册表键值、位数匹配、安装/卸载和注册/注销说明。
 - [ ] 检查 panic 不得越过 FFI/COM 边界；处理空指针、无效参数、HRESULT 与所有 unsafe 代码的安全约束。
 - [ ] 让 COM 对象、线程管理器、sink、窗口与资源在停用/卸载时可重复且安全地清理。
