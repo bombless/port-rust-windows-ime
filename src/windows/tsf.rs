@@ -8,7 +8,7 @@ use std::{
 };
 
 use windows::{
-    core::{implement, Error, HRESULT, Interface, Result, BOOL, GUID},
+    core::{implement, Error, Interface, Result, BOOL, GUID, HRESULT},
     Win32::{
         Foundation::{E_FAIL, E_POINTER, S_FALSE, S_OK},
         System::Com::{IClassFactory, IClassFactory_Impl},
@@ -146,7 +146,9 @@ impl ITfTextInputProcessor_Impl for TsfService_Impl {
         // preserves the only handle that can retry cleanup instead of silently
         // losing the registration state.
         if let Some(manager) = state.manager.as_ref() {
-            unsafe { manager.UnadviseKeyEventSink(state.client_id)?; }
+            unsafe {
+                manager.UnadviseKeyEventSink(state.client_id)?;
+            }
         }
         state.manager = None;
         state.client_id = 0;
@@ -206,11 +208,7 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
         Ok(BOOL(0))
     }
 
-    fn OnPreservedKey(
-        &self,
-        _context: Option<&ITfContext>,
-        _guid: *const GUID,
-    ) -> Result<BOOL> {
+    fn OnPreservedKey(&self, _context: Option<&ITfContext>, _guid: *const GUID) -> Result<BOOL> {
         Ok(BOOL(0))
     }
 }
