@@ -309,5 +309,8 @@ mod tests {
         assert_eq!(wan.weight, 9998);
         assert_eq!(mo.weight, 2);
         assert!(e.snapshot().candidates.iter().any(|c| c.text == "万"));
+        let candidates = e.snapshot().candidates;
+        let index_of = |word: &str| candidates.iter().position(|candidate| candidate.text == word).unwrap();
+        assert!(index_of("皖") < index_of("万"), "100% weight should rank above 99.98%");
     }
 }
