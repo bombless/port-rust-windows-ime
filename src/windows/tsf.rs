@@ -8,7 +8,18 @@ use std::{
 };
 
 use crate::engine::{Engine, Key, KeyOutcome};
-use windows::Win32::UI::WindowsAndMessaging::{LoadIconW, HICON, IDI_APPLICATION, IDI_INFORMATION};
+use windows::Win32::{
+    Foundation::{COLORREF, HWND, RECT},
+    Graphics::Gdi::{
+        CreateBitmap, CreateCompatibleBitmap, CreateCompatibleDC, CreateFontW, DeleteDC,
+        DeleteObject, DrawTextW, GetDC, ReleaseDC, SelectObject, SetBkMode, SetTextColor,
+        CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER,
+        DT_SINGLELINE, DT_VCENTER, FW_BOLD, OUT_DEFAULT_PRECIS, TRANSPARENT,
+    },
+    UI::WindowsAndMessaging::{
+        CreateIconIndirect, GetSystemMetrics, HICON, ICONINFO, SM_CXSMICON, SM_CYSMICON,
+    },
+};
 use windows::{
     core::{implement, Error, Interface, Result, BSTR, GUID, HRESULT},
     Win32::{
@@ -326,22 +337,74 @@ impl ITfLangBarItemButton_Impl for ModeLangBarItem_Impl {
 
     fn GetIcon(&self) -> Result<HICON> {
         let english = self.state.lock().map(|s| s.english_mode).unwrap_or(false);
-        unsafe {
-            LoadIconW(
-                None,
-                if english {
-                    IDI_APPLICATION
-                } else {
-                    IDI_INFORMATION
-                },
-            )
-        }
+        unsafe { create_text_icon(if english { "英" } else { "中" }) }
     }
 
     fn GetText(&self) -> Result<BSTR> {
         let english = self.state.lock().map(|s| s.english_mode).unwrap_or(false);
         Ok(BSTR::from(if english { "英" } else { "中" }))
     }
+}
+
+/// Create a small, system-sized language-bar icon with the current mode glyph.
+unsafe fn create_text_icon(text: &str) -> Result<HICON> {
+    let hwnd = HWND::default();
+    let hdc_screen = GetDC(hwnd);
+    if hdc_screen.is_invalid() {
+        return Err(Error::from_win32());
+    }
+
+    let hdc_mem = CreateCompatibleDC(hdc_screen);
+    if hdc_mem.is_invalid() {
+        ReleaseDC(hwnd, hdc_screen);
+        return Err(Error::from_win32());
+    }
+
+    let width = GetSystemMetrics(SM_CXSMICON).max(16);
+    let height = GetSystemMetrics(SM_CYSMICON).max(16);
+    let hbm_color = CreateCompatibleBitmap(hdc_screen, width, height);
+    let hbm_mask = CreateBitmap(width, height, 1, 1, None);
+    if hbm_color.is_invalid() || hbm_mask.is_invalid() {
+        if !hbm_color.is_invalid() { DeleteObject(hbm_color); }
+        if !hbm_mask.is_invalid() { DeleteObject(hbm_mask); }
+        DeleteDC(hdc_mem);
+        ReleaseDC(hwnd, hdc_screen);
+        return Err(Error::from_win32());
+    }
+
+    let old_bm = SelectObject(hdc_mem, hbm_color);
+    SetBkMode(hdc_mem, TRANSPARENT);
+    SetTextColor(hdc_mem, COLORREF(0x00FFFFFF));
+
+    let face: Vec<u16> = "Microsoft YaHei".encode_utf16().chain(Some(0)).collect();
+    let font = CreateFontW(
+        height - 2, 0, 0, 0, FW_BOLD.0 as i32, 0, 0, 0,
+        DEFAULT_CHARSET.0 as u32, OUT_DEFAULT_PRECIS.0 as u32,
+        CLIP_DEFAULT_PRECIS.0 as u32, CLEARTYPE_QUALITY.0 as u32,
+        DEFAULT_PITCH.0 as u32, windows::core::PCWSTR(face.as_ptr()),
+    );
+    let old_font = SelectObject(hdc_mem, font);
+    let mut rect = RECT { left: 0, top: 0, right: width, bottom: height };
+    let mut wide_text: Vec<u16> = text.encode_utf16().collect();
+    DrawTextW(hdc_mem, &mut wide_text, &mut rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+    SelectObject(hdc_mem, old_font);
+    DeleteObject(font);
+    SelectObject(hdc_mem, old_bm);
+    DeleteDC(hdc_mem);
+    ReleaseDC(hwnd, hdc_screen);
+
+    let icon_info = ICONINFO {
+        fIcon: BOOL(1),
+        xHotspot: 0,
+        yHotspot: 0,
+        hbmMask: hbm_mask,
+        hbmColor: hbm_color,
+    };
+    let result = CreateIconIndirect(&icon_info);
+    DeleteObject(hbm_color);
+    DeleteObject(hbm_mask);
+    result
 }
 
 /// A write operation executed only while TSF grants the edit cookie.
