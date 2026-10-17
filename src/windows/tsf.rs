@@ -14,7 +14,8 @@ use windows::{
         System::Com::{IClassFactory, IClassFactory_Impl},
         UI::TextServices::{
             ITfContext, ITfEditSession, ITfEditSession_Impl, ITfKeyEventSink, ITfKeyEventSink_Impl,
-            ITfKeystrokeMgr, ITfTextInputProcessor, ITfTextInputProcessor_Impl, ITfThreadMgr, TF_ES_READWRITE, TF_ES_SYNC,
+            ITfKeystrokeMgr, ITfTextInputProcessor, ITfTextInputProcessor_Impl, ITfThreadMgr,
+            TF_ES_READWRITE, TF_ES_SYNC,
         },
     },
 };
