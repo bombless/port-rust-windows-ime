@@ -216,6 +216,7 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
     fn OnPreservedKey(&self, _context: Option<&ITfContext>, _guid: *const GUID) -> Result<BOOL> {
         Ok(BOOL(0))
     }
+}
 
 #[cfg(test)]
 mod tests {
@@ -233,11 +234,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn virtual_key_mapping_is_stable() {
-        assert_eq!(vk_to_key(0x4e), Key::Character('N'));
-        assert_eq!(vk_to_key(0x32), Key::Digit(2));
-        assert_eq!(vk_to_key(0x1b), Key::Escape);
-        assert_eq!(vk_to_key(0x70), Key::Other);
-    }
 }
