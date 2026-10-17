@@ -126,11 +126,8 @@ impl Engine {
     }
 }
 
-/// Built-in starter lexicon. Entries are ordered roughly by usefulness.
-/// This is deliberately self-contained; a licensed, full-frequency dictionary
-/// and phrase-ranking model still need to be imported for production use.
-fn lookup(code: &str) -> Vec<Candidate> {
-    const WORDS: &[(&str, &str)] = &[
+/// Seed entries are kept first to preserve useful candidate ordering.
+const SEED_WORDS: &[(&str, &str)] = &[
         ("ni", "你"), ("ni", "呢"), ("ni", "尼"), ("ni", "泥"), ("ni", "拟"),
         ("hao", "好"), ("hao", "号"), ("hao", "毫"), ("hao", "浩"), ("hao", "豪"),
         ("nihao", "你好"), ("nihao", "您好"),
@@ -180,12 +177,50 @@ fn lookup(code: &str) -> Vec<Candidate> {
         ("wanshang", "晚上"), ("zaoshang", "早上"), ("zhongwu", "中午"), ("xianzai", "现在"),
     ];
 
-    let mut candidates = Vec::new();
-    for (pinyin, word) in WORDS {
+static RIME_ENTRIES: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
+
+fn rime_entries() -> &'static [(String, String)] {
+    RIME_ENTRIES.get_or_init(|| {
+        let mut in_data = false;
+        let mut entries = Vec::new();
+        for line in include_str!("../data/luna_pinyin.dict.yaml").lines() {
+            if !in_data {
+                if line.trim() == "..." { in_data = true; }
+                continue;
+            }
+            if line.is_empty() || line.starts_with('#') { continue; }
+            let mut fields = line.split('\t');
+            let Some(word) = fields.next() else { continue };
+            let Some(raw_code) = fields.next() else { continue };
+            let code: String = raw_code.chars()
+                .filter(|c| c.is_ascii_alphabetic())
+                .map(|c| c.to_ascii_lowercase())
+                .collect();
+            if !code.is_empty() && !word.is_empty() {
+                entries.push((code, word.to_owned()));
+            }
+        }
+        entries
+    })
+}
+
+/// Search the curated seed entries first, then the vendored Rime Luna Pinyin
+/// dictionary. Rime's pronunciation columns are normalized by removing spaces
+/// so the existing unspaced composition engine can match full pinyin.
+fn lookup(code: &str) -> Vec<Candidate> {
+    let mut candidates: Vec<Candidate> = Vec::new();
+    for (pinyin, word) in SEED_WORDS {
         if (*pinyin == code || pinyin.starts_with(code))
-            && !candidates.iter().any(|c: &Candidate| c.text == *word)
+            && !candidates.iter().any(|candidate| candidate.text == *word)
         {
             candidates.push(Candidate { text: (*word).to_owned(), code: (*pinyin).to_owned() });
+        }
+    }
+    for (pinyin, word) in rime_entries() {
+        if (pinyin == code || pinyin.starts_with(code))
+            && !candidates.iter().any(|candidate| candidate.text == *word)
+        {
+            candidates.push(Candidate { text: word.clone(), code: pinyin.clone() });
         }
     }
     candidates
