@@ -24,7 +24,8 @@
 - [x] GitHub Actions run #105：Linux fmt/test/clippy 通过；Windows job 在 `cargo test --all-targets --all-features` 编译 Windows 专属代码时失败。日志确认 windows-rs 0.58 的安全包装签名与原代码不符：`GetSelection` 接收 `&mut [TF_SELECTION]`，`SetText` 接收 `&[u16]`，`RequestEditSession` 返回 `Result<HRESULT>`。提交 `c8d73d9` 已按实际编译器诊断修正这三处调用。
 - [x] run #108 的 Linux/Windows 两个 job 在 rustfmt 检查失败，差异只涉及 `src/windows/mod.rs` 的模块顺序和 `registration.rs` 格式；已分别提交格式修正（`0986b45`、`e15ce8e`）。
 - [x] run #119 的 Linux fmt/test/clippy 通过；Windows 编译推进到 TSF edit-session 代码后，发现 `TF_SELECTION.range` 是 `ManuallyDrop<Option<ITfRange>>`，原取值方式会 move 出该字段，并有一个不必要的 `mut`。提交 `cd9b48c` 改为借用并 clone `ITfRange`，移除 `mut`。
-- [ ] 最新 head 的 Windows 专属编译结果尚未取得。未进行 Windows 实机 TSF 宿主验收。
+- [x] run #139 的 Linux fmt/test/clippy 通过；Windows `cargo test` 通过（9 tests），但 Windows Clippy 发现 Arc 包含 apartment-bound COM 指针、两个公开 unsafe 注册函数缺少 Safety 文档，以及 `key_from_virtual_key` 位于测试模块之后。提交 `40c8757` / `76352b1` 已修复对应 lint。
+- [ ] 这些 Clippy 修复提交的最新 head 尚未取得 CI 结果。未进行 Windows 实机 TSF 宿主验收。
 
 ## P0 — 先建立正确的源代码对应关系
 
@@ -36,7 +37,7 @@
 ## P0 — 实现真正可加载的 TSF COM server
 
 - [x] 增加 `IClassFactory`、`DllGetClassObject`、`DllCanUnloadNow` 的第一版实现；通过 `#[implement]` 生成 COM vtable，并跟踪活动对象和 `LockServer` 计数（run #55/#69 Windows CI 通过）。
-- [x] 新增 `DllRegisterServer` / `DllUnregisterServer` 的第一版 COM CLSID/InprocServer32 注册与注销导出（提交 `26c8957` / `816c327`）；目前只写入 CLSID、DLL 路径和 Apartment 线程模型，尚未注册 TSF language profile/category，Windows 编译仍待确认。
+- [x] 新增 `DllRegisterServer` / `DllUnregisterServer` 注册/注销 CLSID、DLL 路径和 Apartment 线程模型，并通过 `ITfInputProcessorProfiles` / `ITfCategoryMgr` 注册 zh-CN profile 与六个源 Go 对应类别；注册失败时回滚已创建的 profile/category。实现尚待当前 head Windows CI 与实机注册验收。
 - [x] 增加 `ITfTextInputProcessor`、`ITfKeyEventSink` 的第一版 windows-rs `#[implement]` 实现；key sink 现在用 `Engine::test_key` 做无副作用预测，并在 `OnKeyDown` 调用 `handle_key`。
 - [ ] 对 COM 接口实现做编译和 ABI 审核，完善 `ITfTextInputProcessorEx` 兼容性。
 - [x] 激活时 `AdviseKeyEventSink`、停用时 `UnadviseKeyEventSink`；避免持有服务状态锁跨越可能重入的 TSF COM 调用，撤销失败时保留 manager/active 状态，允许再次尝试。
@@ -44,7 +45,7 @@
 - [x] 增加 `ITfEditSession` COM 对象，并在 `OnKeyDown` 中通过 `ITfContext::RequestEditSession(TF_ES_SYNC | TF_ES_READWRITE)` 请求 TSF 写锁；目前仅验证调用链设计，未声称已能编辑文本。
 - [x] 接通 `ITfKeyEventSink` 的按键测试与处理：测试阶段只调用 `Engine::test_key`；处理阶段调用 `handle_key` 并按结果请求 TSF edit session。仍需增加 COM/TSF 级别测试，确认请求失败时引擎状态回滚。
 - [x] 增加 `ITfEditSession` 与 `ITfContext::RequestEditSession` 同步写锁路径；`DoEditSession` 使用有效 edit cookie 获取选区并调用 `ITfRange::SetText`，更新组合文本，提交或取消时清理范围状态。仍需 Windows 编译核实、验证 range/selection 实际行为；已加入 edit-session 请求失败时的引擎状态回滚，但仍需测试验证。
-- [ ] 完成 TSF profile、语言/输入法 profile、CLSID、注册表键值、位数匹配、安装/卸载和注册/注销说明。
+- [x] 已实现 TSF profile/category 注册与注销的第一版；仍需 Windows 实机验证、注册表视图/位数检查，以及可重复安装/卸载脚本。
 - [ ] 检查 panic 不得越过 FFI/COM 边界；处理空指针、无效参数、HRESULT 与所有 unsafe 代码的安全约束。
 - [ ] 让 COM 对象、线程管理器、sink、窗口与资源在停用/卸载时可重复且安全地清理。
 
