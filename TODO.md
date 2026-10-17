@@ -17,8 +17,9 @@
 - [x] 为两个 GUID 增加回归测试。
 - [x] 修正 CI 的 push 分支过滤器，将 `feat/**` 加入，确保开发分支 push 也触发 workflow（此前只有 `main` 和 `fix/**`）。
 - [x] GitHub Actions workflow run #23（提交 `73a5601343d1b4b178d41aa07fb8314b52bc26c6`）已完成且结论为 success；该 workflow 包含 Ubuntu 格式/测试/lint 和 Windows MSVC x64 build job。该结果证明 CI 命令通过，不等同于在真实 TSF 宿主中注册、激活或输入验证。
-- [x] 新增 COM 实现后观察到 GitHub Actions run #37（当时 head `6372ac9`）在 Linux 与 Windows 两个 job 均仅因 `cargo fmt --check` 的格式差异失败；随后按该 diff 修正了排序和换行。
-- [ ] 修正后的最新 head 尚无可确认的完整 CI 结果；当前 Windows agent 未安装 Cargo，因此无法在本地重跑。未进行 Windows 实机 TSF 宿主验收。
+- [x] GitHub Actions run #55（提交 `43396db`）的 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build 全部通过；该次验证覆盖 COM class factory、TIP 和 key sink 注册代码。
+- [ ] 在其后进一步改为 edit sessions 未就绪时按键全部透传，并调整了停用/锁处理；最新提交 `4f1997b` 的 CI 正在重新运行，尚未确认结果。
+- [ ] 当前 Windows agent 未安装 Cargo，无法在本地重跑。未进行 Windows 实机 TSF 宿主验收。
 
 ## P0 — 先建立正确的源代码对应关系
 
@@ -31,9 +32,9 @@
 
 - [x] 增加 `IClassFactory`、`DllGetClassObject`、`DllCanUnloadNow` 的第一版实现；通过 `#[implement]` 生成 COM vtable，并跟踪活动对象和 `LockServer` 计数（待 Windows CI 验证）。
 - [ ] 补充 `DllRegisterServer` / `DllUnregisterServer`、注册表与 TSF profile 注册/注销导出。
-- [x] 增加 `ITfTextInputProcessor`、`ITfKeyEventSink` 的第一版 windows-rs `#[implement]` 实现；键盘测试路径只预测，处理路径才推进每实例引擎状态（待 Windows CI 验证）。
+- [x] 增加 `ITfTextInputProcessor`、`ITfKeyEventSink` 的第一版 windows-rs `#[implement]` 实现；在 edit sessions 尚未就绪前，键盘回调明确返回未消费，避免吞掉用户输入。
 - [ ] 对 COM 接口实现做编译和 ABI 审核，完善 `ITfTextInputProcessorEx` 兼容性。
-- [x] 激活时 `AdviseKeyEventSink`、停用时 `UnadviseKeyEventSink`；停用撤销失败时保留 manager/active 状态，允许再次尝试（待 Windows CI 验证）。
+- [x] 激活时 `AdviseKeyEventSink`、停用时 `UnadviseKeyEventSink`；避免持有服务状态锁跨越可能重入的 TSF COM 调用，撤销失败时保留 manager/active 状态，允许再次尝试。
 - [ ] 完善重复激活/并发调用策略，并在真实 TSF 宿主验证连接与撤销。
 - [ ] 实现 `ITfKeyEventSink` 的按键测试与处理：测试阶段不修改输入状态；处理阶段才消费按键并推进状态。
 - [ ] 当前按键 sink 尚未写入文档：实现 `ITfEditSession` 与 `ITfContext::RequestEditSession`，在有效文档锁内更新/提交/删除组合文本，并覆盖同步/异步请求及锁失败。
