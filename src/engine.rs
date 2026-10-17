@@ -10,9 +10,12 @@ pub struct Candidate {
 pub enum Key {
     Character(char),
     Backspace,
+    Delete,
     Escape,
     Up,
     Down,
+    Left,
+    Right,
     Space,
     Enter,
     Digit(u8),
@@ -70,10 +73,11 @@ impl Engine {
         match key {
             Key::Character(c) => c.is_ascii_alphabetic(),
             Key::Backspace
+            | Key::Delete
             | Key::Escape
             | Key::Space
             | Key::Enter => true,
-            Key::Up | Key::Down => !self.candidates.is_empty(),
+            Key::Up | Key::Down | Key::Left | Key::Right => !self.candidates.is_empty(),
             Key::Digit(n @ 1..=9) => usize::from(n - 1) < self.candidates.len(),
             Key::Digit(_) | Key::Other => false,
         }
@@ -107,6 +111,16 @@ impl Engine {
                     KeyOutcome::Update(self.composition.clone())
                 }
             }
+            Key::Delete => {
+                self.composition.remove(0);
+                if self.composition.is_empty() {
+                    self.clear();
+                    KeyOutcome::Cancel
+                } else {
+                    self.refresh();
+                    KeyOutcome::Update(self.composition.clone())
+                }
+            }
             Key::Escape => {
                 self.clear();
                 KeyOutcome::Cancel
@@ -115,8 +129,12 @@ impl Engine {
                 self.selected = self.selected.saturating_sub(1);
                 KeyOutcome::Consumed
             }
-            Key::Down if !self.candidates.is_empty() => {
+            Key::Down | Key::Right if !self.candidates.is_empty() => {
                 self.selected = (self.selected + 1).min(self.candidates.len() - 1);
+                KeyOutcome::Consumed
+            }
+            Key::Left if !self.candidates.is_empty() => {
+                self.selected = self.selected.saturating_sub(1);
                 KeyOutcome::Consumed
             }
             Key::Digit(n @ 1..=9) => {
@@ -253,9 +271,12 @@ mod tests {
         for key in [
             Key::Character('a'),
             Key::Backspace,
+            Key::Delete,
             Key::Escape,
             Key::Up,
             Key::Down,
+            Key::Left,
+            Key::Right,
             Key::Space,
             Key::Enter,
             Key::Digit(1),
@@ -313,6 +334,20 @@ mod tests {
         type_text(&mut engine, "a");
         assert_eq!(engine.handle_key(Key::Escape), KeyOutcome::Cancel);
         assert_eq!(engine.snapshot().composition, "");
+    }
+
+    #[test]
+    fn delete_removes_first_character_and_arrows_navigate_candidates() {
+        let mut engine = Engine::new();
+        type_text(&mut engine, "ni");
+        assert_eq!(engine.handle_key(Key::Down), KeyOutcome::Consumed);
+        assert_eq!(engine.snapshot().selected, 1);
+        assert_eq!(engine.handle_key(Key::Right), KeyOutcome::Consumed);
+        assert_eq!(engine.snapshot().selected, 2);
+        assert_eq!(engine.handle_key(Key::Left), KeyOutcome::Consumed);
+        assert_eq!(engine.snapshot().selected, 1);
+        assert_eq!(engine.handle_key(Key::Delete), KeyOutcome::Update("i".into()));
+        assert_eq!(engine.snapshot().composition, "i");
     }
 
     #[test]
