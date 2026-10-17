@@ -18,23 +18,15 @@ const CLSID_TF_INPUT_PROCESSOR_PROFILES: GUID =
     GUID::from_u128(0x33c53a50_f456_4884_b049_85fd643ecfed);
 const IID_ITF_INPUT_PROCESSOR_PROFILES: GUID =
     GUID::from_u128(0x1f02b6c5_7842_4ee6_8a0b_9a24183a95ca);
-const CLSID_TF_CATEGORY_MGR: GUID =
-    GUID::from_u128(0xa4b544a1_438d_4b41_9325_869523e2d6c7);
-const IID_ITF_CATEGORY_MGR: GUID =
-    GUID::from_u128(0xc3acefb5_f69d_4905_938f_fcadcf4be830);
+const CLSID_TF_CATEGORY_MGR: GUID = GUID::from_u128(0xa4b544a1_438d_4b41_9325_869523e2d6c7);
+const IID_ITF_CATEGORY_MGR: GUID = GUID::from_u128(0xc3acefb5_f69d_4905_938f_fcadcf4be830);
 
-const CAT_TIP_KEYBOARD: GUID =
-    GUID::from_u128(0x34745c63_b2f0_4784_8b67_5e12c8701a31);
-const CAT_TIP_COMLESS: GUID =
-    GUID::from_u128(0x364215d9_75bc_11d7_a6ef_00065b84435c);
-const CAT_TIP_IMMERSIVE: GUID =
-    GUID::from_u128(0x13a016df_560b_46cd_947a_4c3af1e0e35d);
-const CAT_TIP_SECURE: GUID =
-    GUID::from_u128(0x49d2f9ce_1f5e_11d7_a6d3_00065b84435c);
-const CAT_TIP_SYSTRAY: GUID =
-    GUID::from_u128(0x25504fb4_7bab_4bc1_9c69_cf81890f0ef5);
-const CAT_TIP_UI_ELEMENT: GUID =
-    GUID::from_u128(0x49d2f9cf_1f5e_11d7_a6d3_00065b84435c);
+const CAT_TIP_KEYBOARD: GUID = GUID::from_u128(0x34745c63_b2f0_4784_8b67_5e12c8701a31);
+const CAT_TIP_COMLESS: GUID = GUID::from_u128(0x364215d9_75bc_11d7_a6ef_00065b84435c);
+const CAT_TIP_IMMERSIVE: GUID = GUID::from_u128(0x13a016df_560b_46cd_947a_4c3af1e0e35d);
+const CAT_TIP_SECURE: GUID = GUID::from_u128(0x49d2f9ce_1f5e_11d7_a6d3_00065b84435c);
+const CAT_TIP_SYSTRAY: GUID = GUID::from_u128(0x25504fb4_7bab_4bc1_9c69_cf81890f0ef5);
+const CAT_TIP_UI_ELEMENT: GUID = GUID::from_u128(0x49d2f9cf_1f5e_11d7_a6d3_00065b84435c);
 
 const CATEGORIES: [GUID; 6] = [
     CAT_TIP_KEYBOARD,
@@ -62,7 +54,15 @@ type ReleaseFn = unsafe extern "system" fn(*mut c_void) -> u32;
 type RegisterFn = unsafe extern "system" fn(*mut c_void, *const GUID) -> HRESULT;
 type UnregisterFn = unsafe extern "system" fn(*mut c_void, *const GUID) -> HRESULT;
 type AddLanguageProfileFn = unsafe extern "system" fn(
-    *mut c_void, *const GUID, u16, *const GUID, *const u16, u32, *const u16, u32, u32,
+    *mut c_void,
+    *const GUID,
+    u16,
+    *const GUID,
+    *const u16,
+    u32,
+    *const u16,
+    u32,
+    u32,
 ) -> HRESULT;
 type RemoveLanguageProfileFn =
     unsafe extern "system" fn(*mut c_void, *const GUID, u16, *const GUID) -> HRESULT;
