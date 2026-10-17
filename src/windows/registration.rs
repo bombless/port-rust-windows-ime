@@ -153,10 +153,21 @@ unsafe fn register_server() -> HRESULT {
     if result.is_err() {
         return result;
     }
-    write_string(&inproc, Some("ThreadingModel"), "Apartment")
+    let result = write_string(&inproc, Some("ThreadingModel"), "Apartment");
+    if result.is_err() {
+        return result;
+    }
+
+    // COM registration must exist before TSF registers the language profile.
+    let result = super::tsf_registration::register_tip();
+    if result.is_err() {
+        let _ = unregister_com_key();
+        return result;
+    }
+    result
 }
 
-unsafe fn unregister_server() -> HRESULT {
+unsafe fn unregister_com_key() -> HRESULT {
     let key = wide(&clsid_key());
     let result = RegDeleteTreeW(HKEY_CLASSES_ROOT, key.as_ptr());
     if result == ERROR_SUCCESS || result == ERROR_FILE_NOT_FOUND {
@@ -164,6 +175,14 @@ unsafe fn unregister_server() -> HRESULT {
     } else {
         hresult_from_win32(result)
     }
+}
+
+unsafe fn unregister_server() -> HRESULT {
+    let profile_result = super::tsf_registration::unregister_tip();
+    if profile_result.is_err() {
+        return profile_result;
+    }
+    unregister_com_key()
 }
 
 /// Registers the COM CLSID and in-process server path.
