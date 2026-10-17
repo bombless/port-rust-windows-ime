@@ -20,8 +20,9 @@
 - [x] GitHub Actions run #55（提交 `43396db`）的 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build 全部通过。
 - [x] GitHub Actions run #69（提交 `c581bc4`）再次通过 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build；该版本已包含 key-sink 全部透传、避免跨 TSF 调用持锁、恢复 DLL 导出等修正。
 - [x] 提交 `d95d758` / `1a44c74` / `6136099` 将引擎按键预测和正式处理接入 key sink，并让 edit session 在 TSF edit cookie 下通过 `ITfContext::GetSelection` 与 `ITfRange::SetText` 写入组合文本；提交/取消后清除跟踪的组合范围。
-- [x] 重新核查 PR #5 当前 head `a30cbbf821ee5b53c5ddb17664d3f828dfa70fed`：GitHub Actions run #97 的 Linux 与 Windows job 均在 `cargo fmt --all -- --check` 失败，日志指出 `src/windows/tsf.rs` 三处格式差异；后续提交 `194f1d1` 已修正这些格式差异并补充虚拟键映射单元测试，需等待新 head 的 CI 结果。
-- [ ] 当前执行环境无法直接运行 Windows Cargo 工具链；本次格式修正提交尚未取得 CI 结果。未进行 Windows 实机 TSF 宿主验收。
+- [x] 重新核查 PR #5 当前 head `a30cbbf821ee5b53c5ddb17664d3f828dfa70fed`：GitHub Actions run #97 的 Linux 与 Windows job 均在格式检查失败；后续提交修正了 rustfmt 差异并增加虚拟键映射测试。
+- [x] GitHub Actions run #105：Linux fmt/test/clippy 通过；Windows job 在 `cargo test --all-targets --all-features` 编译 Windows 专属代码时失败。日志确认 windows-rs 0.58 的安全包装签名与原代码不符：`GetSelection` 接收 `&mut [TF_SELECTION]`，`SetText` 接收 `&[u16]`，`RequestEditSession` 返回 `Result<HRESULT>`。提交 `c8d73d9` 已按实际编译器诊断修正这三处调用。
+- [ ] 最新修正与新增注册导出尚未取得当前 head 的 Windows CI 结果。未进行 Windows 实机 TSF 宿主验收。
 
 ## P0 — 先建立正确的源代码对应关系
 
@@ -33,7 +34,7 @@
 ## P0 — 实现真正可加载的 TSF COM server
 
 - [x] 增加 `IClassFactory`、`DllGetClassObject`、`DllCanUnloadNow` 的第一版实现；通过 `#[implement]` 生成 COM vtable，并跟踪活动对象和 `LockServer` 计数（run #55/#69 Windows CI 通过）。
-- [ ] 补充 `DllRegisterServer` / `DllUnregisterServer`、注册表与 TSF profile 注册/注销导出。
+- [x] 新增 `DllRegisterServer` / `DllUnregisterServer` 的第一版 COM CLSID/InprocServer32 注册与注销导出（提交 `26c8957` / `816c327`）；目前只写入 CLSID、DLL 路径和 Apartment 线程模型，尚未注册 TSF language profile/category，Windows 编译仍待确认。
 - [x] 增加 `ITfTextInputProcessor`、`ITfKeyEventSink` 的第一版 windows-rs `#[implement]` 实现；key sink 现在用 `Engine::test_key` 做无副作用预测，并在 `OnKeyDown` 调用 `handle_key`。
 - [ ] 对 COM 接口实现做编译和 ABI 审核，完善 `ITfTextInputProcessorEx` 兼容性。
 - [x] 激活时 `AdviseKeyEventSink`、停用时 `UnadviseKeyEventSink`；避免持有服务状态锁跨越可能重入的 TSF COM 调用，撤销失败时保留 manager/active 状态，允许再次尝试。
@@ -64,7 +65,7 @@
 ## P1 — 构建、CI 和发布
 
 - [x] 历史提交在 run #69 中通过 Linux fmt/test/clippy 和 Windows MSVC x64 fmt/test/clippy/release build；这不代表当前 head 已通过。
-- [ ] 当前 head 的 run #97 在 Linux 与 Windows job 的格式检查阶段失败；修复已提交于 `194f1d1`，新 CI 结果待确认。
+- [x] run #97 格式检查失败已修复；run #105 的 Linux 检查通过，但 Windows 编译揭示了三个 windows-rs 0.58 方法签名错误，已在 `c8d73d9` 修复。最新 head 的 Windows CI 结果待确认。
 - [x] CI 配置包含 Ubuntu 格式/测试/lint job 和 Windows MSVC x64 build job；push 触发器已覆盖 `feat/**`。
 - [ ] Windows CI 构建通过后，核实生成物确实是可加载的 DLL，并核对导出符号、依赖项和目标架构。
 - [ ] 增加最小安装/注册、卸载/注销脚本或明确步骤；脚本需可重复执行，并谨慎处理管理员权限和注册表。
