@@ -7,7 +7,7 @@ use std::sync::{Mutex, OnceLock};
 use windows::{
     core::{w, PCWSTR},
     Win32::{
-        Foundation::POINT,
+        Foundation::{HWND, POINT},
         UI::{
             Input::KeyboardAndMouse::GetCursorPos,
             WindowsAndMessaging::{
@@ -21,10 +21,19 @@ use windows::{
 
 use crate::engine::Snapshot;
 
-static WINDOW: OnceLock<Mutex<Option<windows::Win32::Foundation::HWND>>> = OnceLock::new();
+static WINDOW: OnceLock<Mutex<Option<HWND>>> = OnceLock::new();
 
-fn window_slot() -> &'static Mutex<Option<windows::Win32::Foundation::HWND>> {
+fn window_slot() -> &'static Mutex<Option<HWND>> {
     WINDOW.get_or_init(|| Mutex::new(None))
+}
+
+/// Hide the popup, for example when the TSF service is deactivated.
+pub fn hide() {
+    if let Ok(slot) = window_slot().lock() {
+        if let Some(hwnd) = slot.as_ref() {
+            unsafe { ShowWindow(*hwnd, SW_HIDE) };
+        }
+    }
 }
 
 /// Publish the current candidate snapshot. The popup is hidden when no
@@ -41,15 +50,25 @@ pub fn update(snapshot: &Snapshot) {
         return;
     }
 
-    let mut lines = Vec::new();
-    for (index, candidate) in snapshot.candidates.iter().take(9).enumerate() {
-        let marker = if index == snapshot.selected { "▶" } else { " " };
-        lines.push(format!("{marker} {}. {}", index + 1, candidate.text));
-    }
-    let text = format!("{}\r\n{}", snapshot.composition, lines.join("    "));
+    let candidates: Vec<String> = snapshot
+        .candidates
+        .iter()
+        .take(9)
+        .enumerate()
+        .map(|(index, candidate)| {
+            let marker = if index == snapshot.selected { "▶" } else { " " };
+            format!("{marker} {}. {}", index + 1, candidate.text)
+        })
+        .collect();
+    let text = format!("{}\r\n{}", snapshot.composition, candidates.join("\r\n"));
     let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
-    let width = (text.chars().count() as i32 * 12 + 32).clamp(220, 640);
-    let height = 64;
+
+    // Keep the popup compact while allowing candidates to be read vertically
+    // instead of clipping a single long horizontal row.
+    let longest_line = text.lines().map(str::chars).map(Iterator::count).max().unwrap_or(0);
+    let width = (longest_line as i32 * 16 + 28).clamp(220, 520);
+    let candidate_count = candidates.len() as i32;
+    let height = (candidate_count * 24 + 36).clamp(60, 260);
 
     let hwnd = if let Some(hwnd) = slot.as_ref() {
         *hwnd
