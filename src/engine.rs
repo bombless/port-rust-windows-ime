@@ -71,11 +71,10 @@ impl Engine {
             Key::Character(c) => c.is_ascii_alphabetic(),
             Key::Backspace
             | Key::Escape
-            | Key::Up
-            | Key::Down
             | Key::Space
             | Key::Enter => true,
-            Key::Digit(1..=9) => true,
+            Key::Up | Key::Down => !self.candidates.is_empty(),
+            Key::Digit(n @ 1..=9) => usize::from(n - 1) < self.candidates.len(),
             Key::Digit(_) | Key::Other => false,
         }
     }
@@ -112,18 +111,31 @@ impl Engine {
                 self.clear();
                 KeyOutcome::Cancel
             }
-            Key::Up => {
+            Key::Up if !self.candidates.is_empty() => {
                 self.selected = self.selected.saturating_sub(1);
                 KeyOutcome::Consumed
             }
-            Key::Down => {
-                if !self.candidates.is_empty() {
-                    self.selected = (self.selected + 1).min(self.candidates.len() - 1);
-                }
+            Key::Down if !self.candidates.is_empty() => {
+                self.selected = (self.selected + 1).min(self.candidates.len() - 1);
                 KeyOutcome::Consumed
             }
-            Key::Digit(n @ 1..=9) => self.commit(usize::from(n - 1)),
-            Key::Space | Key::Enter => self.commit(self.selected),
+            Key::Digit(n @ 1..=9) => {
+                let index = usize::from(n - 1);
+                if index < self.candidates.len() {
+                    self.commit(index)
+                } else {
+                    KeyOutcome::PassThrough
+                }
+            }
+            Key::Space | Key::Enter => {
+                if self.candidates.is_empty() {
+                    let raw = self.composition.clone();
+                    self.clear();
+                    KeyOutcome::Commit(raw)
+                } else {
+                    self.commit(self.selected)
+                }
+            }
             _ => KeyOutcome::PassThrough,
         }
     }
@@ -134,9 +146,7 @@ impl Engine {
             self.clear();
             KeyOutcome::Commit(text)
         } else {
-            // The key is part of the active composition interaction even when
-            // this particular index is not present in the candidate list.
-            KeyOutcome::Consumed
+            KeyOutcome::PassThrough
         }
     }
 
@@ -249,10 +259,21 @@ mod tests {
             Key::Space,
             Key::Enter,
             Key::Digit(1),
-            Key::Digit(9),
+            Key::Digit(3),
         ] {
             assert!(engine.test_key(key), "did not predict {key:?}");
         }
+
+        let mut no_candidates = Engine::new();
+        type_text(&mut no_candidates, "a");
+        assert!(!no_candidates.test_key(Key::Up));
+        assert!(!no_candidates.test_key(Key::Digit(1)));
+        assert_eq!(no_candidates.handle_key(Key::Up), KeyOutcome::PassThrough);
+        assert_eq!(no_candidates.handle_key(Key::Digit(1)), KeyOutcome::PassThrough);
+        assert_eq!(
+            no_candidates.handle_key(Key::Enter),
+            KeyOutcome::Commit("a".into())
+        );
     }
 
     #[test]
