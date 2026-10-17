@@ -137,7 +137,7 @@ impl ITfTextInputProcessor_Impl for TsfService_Impl {
     }
 
     fn Deactivate(&self) -> Result<()> {
-        let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+        let mut state = self.0.state.lock().map_err(|_| Error::from(E_FAIL))?;
         if !state.active {
             return Ok(());
         }
@@ -167,7 +167,7 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
         wparam: windows::Win32::Foundation::WPARAM,
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
-        let state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+        let state = self.0.state.lock().map_err(|_| Error::from(E_FAIL))?;
         Ok(BOOL(i32::from(state.engine.test_key(vk_to_key(wparam.0)))))
     }
 
@@ -186,7 +186,7 @@ impl ITfKeyEventSink_Impl for TsfService_Impl {
         wparam: windows::Win32::Foundation::WPARAM,
         _lparam: windows::Win32::Foundation::LPARAM,
     ) -> Result<BOOL> {
-        let mut state = self.state.lock().map_err(|_| Error::from(E_FAIL))?;
+        let mut state = self.0.state.lock().map_err(|_| Error::from(E_FAIL))?;
         let key = vk_to_key(wparam.0);
         if !state.engine.test_key(key) {
             return Ok(BOOL(0));
