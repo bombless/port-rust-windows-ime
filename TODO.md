@@ -67,6 +67,13 @@
 - [ ] 自动化测试和 Windows 构建通过，且至少完成一次 Windows 实机注册、激活和实际输入验收。
 - [ ] 文档准确区分已实现、已测试、已在实机验证和仍存在的限制。
 
+## 本轮进展（2026-10-17）
+
+- 已初步核对 Go 源仓库的根目录、`go.mod`、README 和 `tip/` 文件清单。关键迁移源包括 `tip/main.go`（TSF/COM 主实现）、`tip/strategy.go` 与 `tip/composition.go`（输入决策/组合状态）、`tip/pinyin_simp.dict.yaml`（词典）、`tip/candidate_ui.go` 和 `tip/candidate_presenter.go`（候选 UI）；仍需逐项阅读并完成 ABI/行为映射。
+- 修正 Rust 引擎的 `test_key` 预测规则，使其与当前 `handle_key` 对按键是否消费的判断一致；增加预测纯函数、状态一致性及实例隔离测试。该变更尚未在本次会话的本地工具链中执行，需由 CI/开发环境验证。
+- 新增 Windows x64 GitHub Actions 工作流，执行格式检查、测试、Clippy 和 MSVC DLL 构建。工作流结果尚未确认；即使构建通过，也不代表 COM/TSF 已可加载或完成实机验收。
+- 当前 `src/windows/tsf.rs` 仍是生命周期占位代码，CLSID 也尚未与源 Go 实现核实；不要注册或将该 DLL 当作可用输入法。
+
 ## 下一上下文建议从这里开始
 
 1. 先检查本仓库当前所有文件和源 Go 仓库完整目录，不要假定现有骨架正确。
