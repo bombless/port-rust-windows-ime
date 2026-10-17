@@ -7,7 +7,6 @@ use std::{
     },
 };
 
-use windows_core::IUnknownImpl;
 use windows::{
     core::{implement, Error, Interface, Result, GUID, HRESULT},
     Win32::{
@@ -19,6 +18,7 @@ use windows::{
         },
     },
 };
+use windows_core::IUnknownImpl;
 
 use crate::engine::{Engine, Key};
 
@@ -79,12 +79,7 @@ impl IClassFactory_Impl for ClassFactory_Impl {
                 let current = SERVER_LOCKS.load(Ordering::SeqCst);
                 if current == 0
                     || SERVER_LOCKS
-                        .compare_exchange(
-                            current,
-                            current - 1,
-                            Ordering::SeqCst,
-                            Ordering::SeqCst,
-                        )
+                        .compare_exchange(current, current - 1, Ordering::SeqCst, Ordering::SeqCst)
                         .is_ok()
                 {
                     break;
