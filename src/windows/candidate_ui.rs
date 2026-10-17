@@ -65,7 +65,7 @@ pub fn update(snapshot: &Snapshot) {
 
     // Keep the popup compact while allowing candidates to be read vertically
     // instead of clipping a single long horizontal row.
-    let longest_line = text.lines().map(str::chars).map(Iterator::count).max().unwrap_or(0);
+    let longest_line = text.lines().map(|line| line.chars().count()).max().unwrap_or(0);
     let width = (longest_line as i32 * 16 + 28).clamp(220, 520);
     let candidate_count = candidates.len() as i32;
     let height = (candidate_count * 24 + 36).clamp(60, 260);
