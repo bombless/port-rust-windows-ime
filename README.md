@@ -20,7 +20,8 @@ Not implemented yet:
 
 - TSF edit-session behavior has been connected to the engine but is not yet confirmed by the current Windows CI run or a real TSF host. Selection/range tracking, edit-session failure rollback, and caret behavior still need validation.
 - TSF profile/category registration calls `ITfInputProcessorProfiles` and `ITfCategoryMgr` through COM vtables, following the Go `runRegistration` sequence. Current-head CI has compiled this path; a real Windows registration smoke test remains outstanding.
-- Candidate UI, full dictionary/ranking parity, and complete Go behavior migration.
+- First-pass native candidate popup: shows the current composition and up to nine candidates, highlights the selected candidate, hides on cancellation/commit, and anchors near the mouse cursor as a fallback. This is a prototype only; caret anchoring, monitor/DPI handling, dedicated UI-thread ownership, candidate click/flip interaction, and real-host verification remain outstanding.
+- Full Go dictionary/ranking parity and complete behavior migration.
 - Real Windows host activation and typing acceptance.
 
 ## Build and test
