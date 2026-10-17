@@ -36,7 +36,7 @@ pub fn update(snapshot: &Snapshot) {
 
     if !snapshot.visible || snapshot.candidates.is_empty() {
         if let Some(hwnd) = slot.as_ref() {
-            unsafe { ShowWindow(hwnd, SW_HIDE) };
+            unsafe { ShowWindow(*hwnd, SW_HIDE) };
         }
         return;
     }
@@ -94,6 +94,6 @@ pub fn update(snapshot: &Snapshot) {
             height,
             SWP_NOACTIVATE,
         );
-        ShowWindow(&hwnd, SW_SHOWNOACTIVATE);
+        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
     }
 }
