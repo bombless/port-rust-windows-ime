@@ -170,6 +170,10 @@ impl ITfTextInputProcessor_Impl for TsfService_Impl {
         state.manager = None;
         state.client_id = 0;
         state.active = false;
+        // A range belongs to the document/context that created it. Never carry
+        // it into a later activation, which may target a different document.
+        state.composition_range = None;
+        state.engine = Engine::default();
         Ok(())
     }
 }
