@@ -177,6 +177,7 @@ impl ITfTextInputProcessor_Impl for TsfService_Impl {
         // it into a later activation, which may target a different document.
         state.composition_range = None;
         state.engine = Engine::default();
+        crate::windows::candidate_ui::hide();
         Ok(())
     }
 }
