@@ -146,6 +146,23 @@ jobs:
             & $registerHost unregister $dll
             if ($LASTEXITCODE -ne 0) { throw "DllUnregisterServer failed: exit $LASTEXITCODE" }
             if (Test-Path "Registry::HKEY_CLASSES_ROOT\CLSID\$clsid") { throw "COM registration was left behind" }
+
+            # Registration hands TSF strings from this DLL's memory, so repeat it:
+            # anything that depends on what happens to follow a buffer on the heap
+            # shows up as an occasional wrong value, not as a deterministic failure.
+            $wrong = @()
+            foreach ($i in 1..15) {
+              & $registerHost register $dll
+              if ($LASTEXITCODE -ne 0) { throw "registration $i failed: exit $LASTEXITCODE" }
+              $stored = (Get-Item $profileKey).GetValue('Description')
+              if ($stored -ne 'Rust Chinese Input Method') {
+                $wrong += "#${i}: length $($stored.Length), code points $((($stored.ToCharArray() | Select-Object -Last 3 | ForEach-Object { '{0:X4}' -f [int]$_ }) -join ' ')) at the end"
+              }
+              & $registerHost unregister $dll
+              if ($LASTEXITCODE -ne 0) { throw "unregistration $i failed: exit $LASTEXITCODE" }
+            }
+            Write-Host "::notice title=repeated registration::15 registrations, $($wrong.Count) stored a wrong description"
+            if ($wrong.Count -gt 0) { throw "$($wrong.Count) of 15 registrations stored a wrong profile description: $($wrong -join '; ')" }
             if (Test-Path $profileKey) { Write-Warning "TSF profile key remains after unregister: $profileKey" }
           }
           catch {
