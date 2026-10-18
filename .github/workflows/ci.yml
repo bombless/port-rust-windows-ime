@@ -84,6 +84,13 @@ jobs:
           cargo test --locked -- --test-threads=1 2>&1 | tee test.log
           status=${PIPESTATUS[0]}
           [ "$status" = 0 ] || python "$RUNNER_TEMP/annotate.py" "tests" test.log
+          if [ "$status" = 0 ]; then
+            # Evidence that the Windows-only tests really ran, not just that the exit code was 0.
+            passed=$(grep -c '\.\.\. ok$' test.log)
+            windows_tests=$(grep -c '^test win::tests::.* ok$' test.log)
+            names=$(grep '^test win::tests::.* ok$' test.log | sed 's/^test win::tests:://; s/ \.\.\. ok$//' | tr '\n' ' ')
+            echo "::notice title=tests::$passed tests passed, $windows_tests of them Windows COM/key-path/window tests: $names"
+          fi
           exit $status
 
       - name: Registration end to end (register, CoCreateInstance, unregister)
@@ -117,7 +124,9 @@ jobs:
           if (-not (Test-Path $profileKey)) { throw "zh-CN language profile was not registered: $profileKey" }
           if ((Get-Item $profileKey).GetValue('Description') -ne 'Rust Chinese Input Method') { throw "profile description is wrong" }
           Write-Host "TSF registration tree:"
-          Get-ChildItem $tip -Recurse | ForEach-Object { "  " + $_.Name }
+          $tree = Get-ChildItem $tip -Recurse | ForEach-Object { $_.Name -replace '^.*CTF\\TIP\\', '' }
+          $tree | ForEach-Object { "  " + $_ }
+          Write-Host "::notice title=TSF registration tree::$($tree -join '%0A')"
 
           # TSF creates the text service through COM exactly like this.
           $type = [Type]::GetTypeFromCLSID([Guid]$clsid)
