@@ -105,7 +105,7 @@ impl Core {
     /// Whether `vk` is a shortcut right now (see `session::is_shortcut`).
     pub fn is_shortcut(&self, vk: usize) -> bool {
         let key_state = self.key_state.borrow();
-        is_shortcut(vk, |modifier| key_state(modifier))
+        is_shortcut(vk, &**key_state)
     }
 
     /// For tests: replaces the keyboard-state source.
@@ -438,8 +438,16 @@ impl IClassFactory_Impl for ClassFactory_Impl {
             if flock.as_bool() {
                 SERVER_LOCKS.fetch_add(1, Ordering::SeqCst);
             } else {
-                // Never below zero, whatever a misbehaving caller does.
-                let _ = SERVER_LOCKS.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| (n > 0).then_some(n - 1));
+                // Never below zero, whatever a misbehaving caller does. A plain
+                // compare-exchange loop: `fetch_update` is deprecated on new
+                // toolchains and its replacement does not exist on 1.82.
+                let mut current = SERVER_LOCKS.load(Ordering::SeqCst);
+                while current > 0 {
+                    match SERVER_LOCKS.compare_exchange(current, current - 1, Ordering::SeqCst, Ordering::SeqCst) {
+                        Ok(_) => break,
+                        Err(actual) => current = actual,
+                    }
+                }
             }
             tip_log!("LockServer lock={} serverLocks={}", flock.as_bool() as i32, server_locks());
             Ok(())

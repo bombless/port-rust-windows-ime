@@ -35,7 +35,7 @@ pub(crate) fn this_module() -> Result<HMODULE> {
     unsafe {
         GetModuleHandleExW(
             GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-            windows::core::PCWSTR(this_module as usize as *const u16),
+            windows::core::PCWSTR(this_module as *const () as *const u16),
             &mut module,
         )?;
     }
