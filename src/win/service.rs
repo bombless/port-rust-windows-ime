@@ -24,7 +24,7 @@ use windows::core::{implement, IUnknownImpl, Interface, Ref, Result, BOOL, GUID}
 use windows::Win32::Foundation::{CLASS_E_NOAGGREGATION, E_FAIL, E_POINTER, LPARAM, WPARAM};
 use windows::Win32::System::Com::{IClassFactory, IClassFactory_Impl};
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_LWIN, VK_RWIN};
+use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState;
 use windows::Win32::UI::TextServices::{
     ITfComposition, ITfContext, ITfKeyEventSink, ITfKeyEventSink_Impl, ITfKeystrokeMgr, ITfRange,
     ITfTextInputProcessorEx, ITfTextInputProcessorEx_Impl, ITfTextInputProcessor_Impl, ITfThreadMgr,
@@ -35,17 +35,15 @@ use super::presenter::WindowPresenter;
 use crate::diag::{guarded, pause_at, start_dump_watcher, thread_id, write_dump};
 use crate::engine::key_name;
 use crate::guids::{guid_text, CLSID_TEXT_SERVICE};
-use crate::session::{key_decision, win_space_bypass_with, Session};
+use crate::session::{is_shortcut, key_decision, Session};
 use crate::tip_log;
 
-/// Whether either Windows key is currently down. `GetKeyState` is a user32
-/// export; looking it up in the wrong DLL was a first-keystroke panic in Go.
-pub(crate) fn win_held() -> bool {
-    [VK_LWIN, VK_RWIN].iter().any(|vk| unsafe { GetKeyState(i32::from(vk.0)) } < 0)
-}
-
-pub(crate) fn win_space_bypass(vk: usize) -> bool {
-    win_space_bypass_with(vk, win_held)
+/// Whether a virtual key is down right now. `GetKeyState` is a user32 export;
+/// looking it up in the wrong DLL was a first-keystroke panic in the Go port.
+pub(crate) fn key_is_down(vk: usize) -> bool {
+    let state = unsafe { GetKeyState(vk as i32) };
+    // The high bit is set while the key is down.
+    state < 0
 }
 
 /// DPI of the window the user is typing into; 96 when unknown.
@@ -76,6 +74,8 @@ pub(crate) struct Core {
     pub thread_mgr: RefCell<Option<ITfThreadMgr>>,
     pub sink_advised: Cell<bool>,
     key_busy: Cell<bool>,
+    /// Asks whether a virtual key is held. Replaceable so tests can press Ctrl.
+    key_state: RefCell<Box<dyn Fn(usize) -> bool>>,
 }
 
 /// Marks key handling as running until dropped.
@@ -98,7 +98,20 @@ impl Core {
             thread_mgr: RefCell::new(None),
             sink_advised: Cell::new(false),
             key_busy: Cell::new(false),
+            key_state: RefCell::new(Box::new(key_is_down)),
         }
+    }
+
+    /// Whether `vk` is a shortcut right now (see `session::is_shortcut`).
+    pub fn is_shortcut(&self, vk: usize) -> bool {
+        let key_state = self.key_state.borrow();
+        is_shortcut(vk, |modifier| key_state(modifier))
+    }
+
+    /// For tests: replaces the keyboard-state source.
+    #[cfg(test)]
+    pub fn set_key_state(&self, key_state: impl Fn(usize) -> bool + 'static) {
+        *self.key_state.borrow_mut() = Box::new(key_state);
     }
 
     /// Claims key handling. `None` means a key callback is already running on
@@ -117,8 +130,8 @@ impl Core {
     /// key was kept. The composition is only written for a key the engine keeps,
     /// and only with the context this very callback was handed.
     pub fn apply_key(self: &Rc<Self>, context: Option<&ITfContext>, vk: usize, lparam: isize) -> bool {
-        if win_space_bypass(vk) {
-            tip_log!("TSF OnKeyDown bypass Win+Space vk=0x{vk:x}");
+        if self.is_shortcut(vk) {
+            tip_log!("TSF OnKeyDown leaving shortcut to the application vk=0x{vk:x}");
             return false;
         }
         tip_log!(
@@ -183,6 +196,15 @@ impl TextService_Impl {
             tip_log!("StrategyTip Activate E_POINTER: no ITfThreadMgr");
             return Err(E_POINTER.into());
         };
+        if self.core.sink_advised.get() {
+            // Advising twice for one client fails and would leave the first
+            // registration orphaned; a repeated activation is simply a no-op.
+            tip_log!(
+                "StrategyTip Activate ignored: the key sink is already advised clientId={}",
+                self.core.client_id.get()
+            );
+            return Ok(());
+        }
         let keystrokes: ITfKeystrokeMgr = thread_mgr.cast()?;
         let sink: ITfKeyEventSink = self.to_interface();
         if let Err(error) = unsafe { keystrokes.AdviseKeyEventSink(client_id, &sink, true) } {
@@ -314,8 +336,8 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
             let Some(_busy) = self.core.enter_key("OnTestKeyDown") else {
                 return false;
             };
-            if win_space_bypass(wparam.0) {
-                tip_log!("TSF OnTestKeyDown bypass Win+Space vk=0x{:x}", wparam.0);
+            if self.core.is_shortcut(wparam.0) {
+                tip_log!("TSF OnTestKeyDown leaving shortcut to the application vk=0x{:x}", wparam.0);
                 return eat("OnTestKeyDown", false);
             }
             eat("OnTestKeyDown", self.core.session.predict_consume(wparam.0))
@@ -364,11 +386,17 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
     }
 }
 
+/// Outstanding `LockServer(TRUE)` calls for the whole process. A class factory is
+/// created per `DllGetClassObject` call, so the count cannot live in the factory.
+static SERVER_LOCKS: AtomicI32 = AtomicI32::new(0);
+
+pub(crate) fn server_locks() -> i32 {
+    SERVER_LOCKS.load(Ordering::SeqCst)
+}
+
 /// The class factory TSF gets from `DllGetClassObject`.
 #[implement(IClassFactory)]
-pub(crate) struct ClassFactory {
-    pub locks: AtomicI32,
-}
+pub(crate) struct ClassFactory;
 
 impl IClassFactory_Impl for ClassFactory_Impl {
     fn CreateInstance(
@@ -408,11 +436,12 @@ impl IClassFactory_Impl for ClassFactory_Impl {
     fn LockServer(&self, flock: BOOL) -> Result<()> {
         super::run_hr("IClassFactory.LockServer", || {
             if flock.as_bool() {
-                self.locks.fetch_add(1, Ordering::SeqCst);
-            } else if self.locks.load(Ordering::SeqCst) > 0 {
-                self.locks.fetch_sub(1, Ordering::SeqCst);
+                SERVER_LOCKS.fetch_add(1, Ordering::SeqCst);
+            } else {
+                // Never below zero, whatever a misbehaving caller does.
+                let _ = SERVER_LOCKS.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| (n > 0).then_some(n - 1));
             }
-            tip_log!("LockServer lock={} serverLocks={}", flock.as_bool() as i32, self.locks.load(Ordering::SeqCst));
+            tip_log!("LockServer lock={} serverLocks={}", flock.as_bool() as i32, server_locks());
             Ok(())
         })
     }

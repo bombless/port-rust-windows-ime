@@ -5,7 +5,6 @@
 //! an `extern "system"` function would abort it.
 
 use std::ffi::c_void;
-use std::sync::atomic::AtomicI32;
 
 use windows::core::{Interface, GUID, HRESULT};
 use windows::Win32::Foundation::{CLASS_E_CLASSNOTAVAILABLE, E_FAIL, E_POINTER, S_FALSE};
@@ -49,7 +48,7 @@ pub unsafe extern "system" fn DllGetClassObject(
             tip_log!("DllGetClassObject CLASS_E_CLASSNOTAVAILABLE");
             return CLASS_E_CLASSNOTAVAILABLE;
         }
-        let factory: IClassFactory = ClassFactory { locks: AtomicI32::new(0) }.into();
+        let factory: IClassFactory = ClassFactory.into();
         let hr = unsafe { factory.query(riid, ppv) };
         tip_log!("DllGetClassObject query hr=0x{:08x} out={:?}", hr.0 as u32, unsafe { *ppv });
         hr

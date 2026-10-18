@@ -24,7 +24,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use super::fake_tsf::*;
 use super::guid;
 use super::presenter::WindowPresenter;
-use super::service::{Core, TextService};
+use super::service::{server_locks, Core, TextService};
 use crate::candidate_ui::{Presenter, Snapshot};
 use crate::diag::test_support::LogRedirect;
 use crate::engine::{candidates_for, Candidate};
@@ -132,11 +132,25 @@ fn dll_get_class_object_serves_the_class_factory() {
     let wrong = unsafe { factory.CreateInstance::<_, ITfComposition>(None::<&IUnknown>) };
     assert_eq!(wrong.unwrap_err().code(), E_NOINTERFACE);
 
-    // LockServer is balanced and never goes negative.
+    // LockServer is one count for the whole process, shared by every factory the
+    // DLL hands out, balanced, and never negative.
+    let (hr, raw) = get_class_object(&guid(CLSID_TEXT_SERVICE), &IClassFactory::IID);
+    assert_eq!(hr, S_OK);
+    let other_factory = unsafe { IClassFactory::from_raw(raw) };
+    let before = server_locks();
     unsafe {
         factory.LockServer(true).unwrap();
+        other_factory.LockServer(true).unwrap();
+    }
+    assert_eq!(server_locks(), before + 2, "locks taken through different factories add up");
+    unsafe {
         factory.LockServer(false).unwrap();
-        factory.LockServer(false).unwrap();
+        other_factory.LockServer(false).unwrap();
+    }
+    assert_eq!(server_locks(), before);
+    if before == 0 {
+        unsafe { factory.LockServer(false).unwrap() };
+        assert_eq!(server_locks(), 0, "an unbalanced unlock must not go negative");
     }
 }
 
@@ -253,6 +267,19 @@ fn activation_without_a_thread_manager_is_e_pointer() {
 }
 
 #[test]
+fn a_repeated_activation_does_not_advise_twice() {
+    let h = Harness::new("reactivate");
+    let tm = fake_thread_mgr(&h.thread_mgr);
+    unsafe { h.service.ActivateEx(&h.thread_mgr, 7, 0) }.unwrap();
+    assert_eq!(tm.advise_calls.get(), 1, "a second activation must not advise a second time");
+    assert!(h.log.contents().contains("already advised"), "{}", h.log.contents());
+    // a proper cycle still works afterwards
+    unsafe { h.service.Deactivate() }.unwrap();
+    unsafe { h.service.ActivateEx(&h.thread_mgr, 8, 0) }.unwrap();
+    assert_eq!((tm.advise_calls.get(), tm.advised_client.get()), (2, Some(8)));
+}
+
+#[test]
 fn the_plain_activate_entry_point_also_advises() {
     let _log = LogRedirect::new("activate-plain");
     let thread_mgr = new_thread_mgr();
@@ -361,6 +388,45 @@ fn text_already_in_the_document_is_left_alone() {
     h.type_letters("ni");
     assert!(h.press(VK_SPACE));
     assert_eq!(h.text(), format!("ab{}", candidates_for("ni")[0].text));
+}
+
+// A previous Rust port of this project found on a real machine that an active IME
+// that eats Ctrl+C, Alt+letter and Win+key makes every application shortcut
+// unusable. The Go service only stepped aside for Win+Space.
+#[test]
+fn shortcuts_with_ctrl_alt_or_win_are_never_eaten() {
+    let h = Harness::new("shortcuts");
+    for (name, modifier) in [("Ctrl", 0x11usize), ("Alt", 0x12), ("left Win", 0x5B), ("right Win", 0x5C)] {
+        h.core.set_key_state(move |vk| vk == modifier);
+        for key in ['C' as usize, 'V' as usize, VK_SPACE, '1' as usize] {
+            let test = unsafe { h.sink.OnTestKeyDown(&h.context, WPARAM(key), LPARAM(0)) }.unwrap();
+            let down = unsafe { h.sink.OnKeyDown(&h.context, WPARAM(key), LPARAM(0)) }.unwrap();
+            assert!(!test.as_bool() && !down.as_bool(), "{name}+0x{key:x} must reach the application");
+        }
+        assert_eq!(h.core.session.ime_state().composition, "", "{name}: no shortcut may be typed as pinyin");
+        assert_eq!(h.text(), "");
+    }
+
+    // Shift is typing, not a shortcut.
+    h.core.set_key_state(|vk| vk == 0x10);
+    h.type_letters("n");
+    assert_eq!(h.text(), "n");
+
+    // Ctrl+C mid-composition goes to the application and leaves the composition alone.
+    h.core.set_key_state(|vk| vk == 0x11);
+    assert!(!h.press('C' as usize));
+    assert_eq!(h.text(), "n");
+    assert!(h.has_composition());
+
+    // Win+Space mid-composition (the one combination the Go port handled).
+    h.core.set_key_state(|vk| vk == 0x5B);
+    assert!(!h.press(VK_SPACE));
+    assert_eq!(h.text(), "n", "Win+Space must not commit the composition");
+
+    // Released again: typing continues where it left off.
+    h.core.set_key_state(|_| false);
+    h.type_letters("i");
+    assert_eq!(h.text(), "ni");
 }
 
 #[test]

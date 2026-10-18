@@ -71,12 +71,22 @@ pub fn key_decision(reply: Option<&Reply>) -> bool {
     reply.is_some_and(|r| r.consume)
 }
 
-/// Win+Space switches input methods and belongs to Windows. Once keys are really
-/// consumed a live composition would swallow it, so the engine steps aside.
-/// `win_held` reports whether either Windows key is down; it is only asked for
-/// the space bar, so ordinary typing never pays for the lookup.
-pub fn win_space_bypass_with(vk: usize, win_held: impl FnOnce() -> bool) -> bool {
-    vk == 0x20 && win_held()
+/// Virtual-key codes of the modifiers that turn a key into a shortcut: Ctrl, Alt
+/// and either Windows key.
+pub const SHORTCUT_MODIFIERS: [usize; 4] = [0x11, 0x12, 0x5B, 0x5C];
+
+/// Whether `vk` is part of a shortcut (Ctrl+C, Alt+Tab, Win+Space, ...), which
+/// belongs to the application or to Windows and must reach it untouched.
+///
+/// The Go service only stepped aside for Win+Space, so with it active Ctrl+C,
+/// Ctrl+V and every other Ctrl/Alt letter shortcut was eaten and typed as pinyin.
+/// A previous Rust port of this project hit that on a real machine and fixed it
+/// the same way. `key_down` asks whether a virtual key is currently held; it is
+/// only consulted for keys the engine handles, so ordinary typing of keys it
+/// ignores never pays for the lookup. Shift is deliberately not a shortcut
+/// modifier: Shift+letter is how capitals are typed.
+pub fn is_shortcut(vk: usize, key_down: impl Fn(usize) -> bool) -> bool {
+    Key::from_vk(vk).is_some() && SHORTCUT_MODIFIERS.iter().any(|&modifier| key_down(modifier))
 }
 
 /// How many UTF-16 code units `text` occupies in the document, which is the
@@ -473,12 +483,22 @@ mod tests {
         );
     }
 
-    // port of TestWinSpaceBypassOnlyClaimsSpaceWhileWinIsHeld
+    // Supersedes the Go TestWinSpaceBypassOnlyClaimsSpaceWhileWinIsHeld: Win+Space
+    // is now one case of "any shortcut modifier held".
     #[test]
-    fn win_space_bypass_only_claims_space_while_win_is_held() {
-        assert!(!win_space_bypass_with('A' as usize, || panic!("only VK_SPACE may consult the keyboard")));
-        assert!(win_space_bypass_with(0x20, || true));
-        assert!(!win_space_bypass_with(0x20, || false));
+    fn shortcuts_are_left_to_the_application() {
+        let held = |wanted: usize| move |vk: usize| vk == wanted;
+        for (name, modifier) in [("Ctrl", 0x11), ("Alt", 0x12), ("left Win", 0x5B), ("right Win", 0x5C)] {
+            for key in ['C' as usize, 'V' as usize, 0x20, 0x08, 0x0D, '1' as usize, 0x28] {
+                assert!(is_shortcut(key, held(modifier)), "{name}+0x{key:x} is a shortcut");
+            }
+        }
+        assert!(!is_shortcut('C' as usize, |_| false), "a bare letter is typing");
+        assert!(!is_shortcut('C' as usize, held(0x10)), "Shift+letter types a capital, it is not a shortcut");
+        assert!(
+            !is_shortcut(0x70, |_| panic!("unmapped keys must not consult the keyboard")),
+            "keys the engine ignores never need the lookup"
+        );
     }
 
     // port of TestUtf16UnitsCountsUTF16CodeUnits

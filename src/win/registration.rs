@@ -154,7 +154,10 @@ pub(crate) fn run_registration(unregister: bool) -> HRESULT {
     } else {
         let registered = register_com_server().and_then(|()| register_tip());
         if registered.is_err() {
-            // Do not leave a half-registered server behind.
+            // Do not leave a half-registered service behind: undo whatever part of the
+            // TSF profile and the COM class got written. Both only touch this
+            // service's own CLSID, so unrelated registrations are never at risk.
+            let _ = unregister_tip();
             let _ = unregister_com_server();
         }
         registered
