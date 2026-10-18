@@ -97,52 +97,60 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $dll = (Resolve-Path target\release\port_rust_windows_ime.dll).Path
-          $registerHost = (Resolve-Path target\release\registerhost.exe).Path
-          $clsid = '{32200908-37C6-4149-AED4-664A78DB2082}'
-          $profile = '{89BD0007-8910-4365-A02A-4B975567138D}'
-          $tip = "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\CTF\TIP\$clsid"
+          try {
+            $dll = (Resolve-Path target\release\port_rust_windows_ime.dll).Path
+            $registerHost = (Resolve-Path target\release\registerhost.exe).Path
+            $clsid = '{32200908-37C6-4149-AED4-664A78DB2082}'
+            $profile = '{89BD0007-8910-4365-A02A-4B975567138D}'
+            $tip = "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\CTF\TIP\$clsid"
 
-          # The DLL must be a 64-bit image that exports the four COM entry points.
-          $bytes = [System.IO.File]::ReadAllBytes($dll)
-          $pe = [BitConverter]::ToInt32($bytes, 0x3C)
-          if ([BitConverter]::ToUInt16($bytes, $pe + 4) -ne 0x8664) { throw "not an x64 image" }
-          $text = [System.Text.Encoding]::ASCII.GetString($bytes)
-          foreach ($export in 'DllGetClassObject', 'DllCanUnloadNow', 'DllRegisterServer', 'DllUnregisterServer') {
-            if (-not $text.Contains($export)) { throw "export $export is missing from the DLL" }
+            # The DLL must be a 64-bit image that exports the four COM entry points.
+            $bytes = [System.IO.File]::ReadAllBytes($dll)
+            $pe = [BitConverter]::ToInt32($bytes, 0x3C)
+            if ([BitConverter]::ToUInt16($bytes, $pe + 4) -ne 0x8664) { throw "not an x64 image" }
+            $text = [System.Text.Encoding]::ASCII.GetString($bytes)
+            foreach ($export in 'DllGetClassObject', 'DllCanUnloadNow', 'DllRegisterServer', 'DllUnregisterServer') {
+              if (-not $text.Contains($export)) { throw "export $export is missing from the DLL" }
+            }
+
+            & $registerHost register $dll
+            if ($LASTEXITCODE -ne 0) { throw "DllRegisterServer failed: exit $LASTEXITCODE" }
+
+            $inproc = Get-Item "Registry::HKEY_CLASSES_ROOT\CLSID\$clsid\InprocServer32"
+            if ($inproc.GetValue('') -ne $dll) { throw "InprocServer32 is '$($inproc.GetValue(''))', expected '$dll'" }
+            if ($inproc.GetValue('ThreadingModel') -ne 'Apartment') { throw "ThreadingModel is not Apartment" }
+            if ((Get-Item "Registry::HKEY_CLASSES_ROOT\CLSID\$clsid").GetValue('') -ne 'Rust Chinese Input Method') { throw "COM class name is wrong" }
+
+            $profileKey = "$tip\LanguageProfile\0x00000804\$profile"
+            if (-not (Test-Path $profileKey)) { throw "zh-CN language profile was not registered: $profileKey" }
+            if ((Get-Item $profileKey).GetValue('Description') -ne 'Rust Chinese Input Method') { throw "profile description is wrong" }
+            Write-Host "TSF registration tree:"
+            $tree = Get-ChildItem $tip -Recurse | ForEach-Object { $_.Name -replace '^.*CTF\\TIP\\', '' }
+            $tree | ForEach-Object { "  " + $_ }
+            Write-Host "::notice title=TSF registration tree::$($tree -join '%0A')"
+
+            # TSF creates the text service through COM exactly like this.
+            $type = [Type]::GetTypeFromCLSID([Guid]$clsid)
+            $object = [Activator]::CreateInstance($type)
+            if ($null -eq $object) { throw "CoCreateInstance returned nothing" }
+            [void][Runtime.InteropServices.Marshal]::ReleaseComObject($object)
+            Write-Host "CoCreateInstance through the registered CLSID works"
+
+            # Registering again must be harmless.
+            & $registerHost register $dll
+            if ($LASTEXITCODE -ne 0) { throw "second DllRegisterServer failed: exit $LASTEXITCODE" }
+
+            & $registerHost unregister $dll
+            if ($LASTEXITCODE -ne 0) { throw "DllUnregisterServer failed: exit $LASTEXITCODE" }
+            if (Test-Path "Registry::HKEY_CLASSES_ROOT\CLSID\$clsid") { throw "COM registration was left behind" }
+            if (Test-Path $profileKey) { Write-Warning "TSF profile key remains after unregister: $profileKey" }
           }
-
-          & $registerHost register $dll
-          if ($LASTEXITCODE -ne 0) { throw "DllRegisterServer failed: exit $LASTEXITCODE" }
-
-          $inproc = Get-Item "Registry::HKEY_CLASSES_ROOT\CLSID\$clsid\InprocServer32"
-          if ($inproc.GetValue('') -ne $dll) { throw "InprocServer32 is '$($inproc.GetValue(''))', expected '$dll'" }
-          if ($inproc.GetValue('ThreadingModel') -ne 'Apartment') { throw "ThreadingModel is not Apartment" }
-          if ((Get-Item "Registry::HKEY_CLASSES_ROOT\CLSID\$clsid").GetValue('') -ne 'Rust Chinese Input Method') { throw "COM class name is wrong" }
-
-          $profileKey = "$tip\LanguageProfile\0x00000804\$profile"
-          if (-not (Test-Path $profileKey)) { throw "zh-CN language profile was not registered: $profileKey" }
-          if ((Get-Item $profileKey).GetValue('Description') -ne 'Rust Chinese Input Method') { throw "profile description is wrong" }
-          Write-Host "TSF registration tree:"
-          $tree = Get-ChildItem $tip -Recurse | ForEach-Object { $_.Name -replace '^.*CTF\\TIP\\', '' }
-          $tree | ForEach-Object { "  " + $_ }
-          Write-Host "::notice title=TSF registration tree::$($tree -join '%0A')"
-
-          # TSF creates the text service through COM exactly like this.
-          $type = [Type]::GetTypeFromCLSID([Guid]$clsid)
-          $object = [Activator]::CreateInstance($type)
-          if ($null -eq $object) { throw "CoCreateInstance returned nothing" }
-          [void][Runtime.InteropServices.Marshal]::ReleaseComObject($object)
-          Write-Host "CoCreateInstance through the registered CLSID works"
-
-          # Registering again must be harmless.
-          & $registerHost register $dll
-          if ($LASTEXITCODE -ne 0) { throw "second DllRegisterServer failed: exit $LASTEXITCODE" }
-
-          & $registerHost unregister $dll
-          if ($LASTEXITCODE -ne 0) { throw "DllUnregisterServer failed: exit $LASTEXITCODE" }
-          if (Test-Path "Registry::HKEY_CLASSES_ROOT\CLSID\$clsid") { throw "COM registration was left behind" }
-          if (Test-Path $profileKey) { Write-Warning "TSF profile key remains after unregister: $profileKey" }
+          catch {
+            $where = "line $($_.InvocationInfo.ScriptLineNumber): $($_.InvocationInfo.Line.Trim())"
+            $message = ($_.Exception.Message + ' | ' + $where) -replace '%','%25' -replace "`r",'%0D' -replace "`n",'%0A'
+            Write-Host "::error title=registration step::$message"
+            exit 1
+          }
 
       - name: Upload build
         uses: actions/upload-artifact@v4
