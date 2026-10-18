@@ -1,0 +1,46 @@
+[package]
+name = "port-rust-windows-ime"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+description = "Standalone Rust TSF (Text Services Framework) pinyin input method, ported from port-golang-windows-ime"
+publish = false
+
+[lib]
+# cdylib: the TSF DLL that Windows loads into host applications.
+# rlib:   lets the unit/integration tests link against the same code.
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "registerhost"
+path = "src/bin/registerhost.rs"
+
+# Everything that touches Windows lives behind cfg(windows), so the engine, the
+# candidate model and the session logic build and test on any host.
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_Security",
+  "Win32_System_Com",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Registry",
+  "Win32_System_SystemInformation",
+  "Win32_System_Threading",
+  "Win32_UI_HiDpi",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_TextServices",
+  "Win32_UI_WindowsAndMessaging",
+]
+
+# `#[implement]` expands to paths rooted at `::windows_core`, so the crate has to
+# be a direct dependency even though `windows` re-exports it.
+[target.'cfg(windows)'.dependencies.windows-core]
+version = "0.62"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+# Callbacks catch panics themselves (see diag::guarded), so unwinding must stay on.
+panic = "unwind"

@@ -1,0 +1,156 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  portable:
+    name: Engine, model and session (Linux) + differential test against the Go original
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal --component rustfmt
+      - name: Format
+        run: cargo fmt --check
+      - name: Unit tests
+        run: cargo test --locked
+      - name: Differential test against port-golang-windows-ime
+        run: tools/differential/run.sh 3000 400
+
+  windows:
+    name: Windows build, COM tests, registration
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal --component clippy
+
+      # The log of a failed step is not always reachable for whoever is reading
+      # this run, so a failure also publishes the tail of its output as an
+      # annotation.
+      - name: Helper for failure annotations
+        run: |
+          cat > "$RUNNER_TEMP/annotate.py" <<'PY'
+          import sys
+          title, path = sys.argv[1], sys.argv[2]
+          text = open(path, encoding="utf-8", errors="replace").read()[-7000:]
+          text = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error title={title}::{text}")
+          PY
+
+      - name: PowerShell scripts parse
+        shell: pwsh
+        run: |
+          foreach ($script in 'install-dll.ps1', 'uninstall.ps1') {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script), [ref]$null, [ref]$errors)
+            if ($errors) { $errors | ForEach-Object { Write-Error "$script : $($_.Message) (line $($_.Extent.StartLineNumber))" }; exit 1 }
+            Write-Host "$script parses"
+          }
+
+      - name: Clippy
+        run: |
+          set +e
+          cargo clippy --locked --all-targets -- -D warnings 2>&1 | tee clippy.log
+          status=${PIPESTATUS[0]}
+          [ "$status" = 0 ] || python "$RUNNER_TEMP/annotate.py" "clippy" clippy.log
+          exit $status
+
+      - name: Build (release)
+        run: |
+          set +e
+          cargo build --release --locked 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          [ "$status" = 0 ] || python "$RUNNER_TEMP/annotate.py" "build" build.log
+          exit $status
+
+      - name: Tests (COM identity, DLL exports, key path against the fake TSF host, candidate window)
+        run: |
+          set +e
+          cargo test --locked -- --test-threads=1 2>&1 | tee test.log
+          status=${PIPESTATUS[0]}
+          [ "$status" = 0 ] || python "$RUNNER_TEMP/annotate.py" "tests" test.log
+          exit $status
+
+      - name: Registration end to end (register, CoCreateInstance, unregister)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dll = (Resolve-Path target\release\port_rust_windows_ime.dll).Path
+          $registerHost = (Resolve-Path target\release\registerhost.exe).Path
+          $clsid = '{32200908-37C6-4149-AED4-664A78DB2082}'
+          $profile = '{89BD0007-8910-4365-A02A-4B975567138D}'
+          $tip = "Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\CTF\TIP\$clsid"
+
+          # The DLL must be a 64-bit image that exports the four COM entry points.
+          $bytes = [System.IO.File]::ReadAllBytes($dll)
+          $pe = [BitConverter]::ToInt32($bytes, 0x3C)
+          if ([BitConverter]::ToUInt16($bytes, $pe + 4) -ne 0x8664) { throw "not an x64 image" }
+          $text = [System.Text.Encoding]::ASCII.GetString($bytes)
+          foreach ($export in 'DllGetClassObject', 'DllCanUnloadNow', 'DllRegisterServer', 'DllUnregisterServer') {
+            if (-not $text.Contains($export)) { throw "export $export is missing from the DLL" }
+          }
+
+          & $registerHost register $dll
+          if ($LASTEXITCODE -ne 0) { throw "DllRegisterServer failed: exit $LASTEXITCODE" }
+
+          $inproc = Get-Item "Registry::HKEY_CLASSES_ROOT\CLSID\$clsid\InprocServer32"
+          if ($inproc.GetValue('') -ne $dll) { throw "InprocServer32 is '$($inproc.GetValue(''))', expected '$dll'" }
+          if ($inproc.GetValue('ThreadingModel') -ne 'Apartment') { throw "ThreadingModel is not Apartment" }
+          if ((Get-Item "Registry::HKEY_CLASSES_ROOT\CLSID\$clsid").GetValue('') -ne 'Rust Chinese Input Method') { throw "COM class name is wrong" }
+
+          $profileKey = "$tip\LanguageProfile\0x00000804\$profile"
+          if (-not (Test-Path $profileKey)) { throw "zh-CN language profile was not registered: $profileKey" }
+          if ((Get-Item $profileKey).GetValue('Description') -ne 'Rust Chinese Input Method') { throw "profile description is wrong" }
+          Write-Host "TSF registration tree:"
+          Get-ChildItem $tip -Recurse | ForEach-Object { "  " + $_.Name }
+
+          # TSF creates the text service through COM exactly like this.
+          $type = [Type]::GetTypeFromCLSID([Guid]$clsid)
+          $object = [Activator]::CreateInstance($type)
+          if ($null -eq $object) { throw "CoCreateInstance returned nothing" }
+          [void][Runtime.InteropServices.Marshal]::ReleaseComObject($object)
+          Write-Host "CoCreateInstance through the registered CLSID works"
+
+          # Registering again must be harmless.
+          & $registerHost register $dll
+          if ($LASTEXITCODE -ne 0) { throw "second DllRegisterServer failed: exit $LASTEXITCODE" }
+
+          & $registerHost unregister $dll
+          if ($LASTEXITCODE -ne 0) { throw "DllUnregisterServer failed: exit $LASTEXITCODE" }
+          if (Test-Path "Registry::HKEY_CLASSES_ROOT\CLSID\$clsid") { throw "COM registration was left behind" }
+          if (Test-Path $profileKey) { Write-Warning "TSF profile key remains after unregister: $profileKey" }
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: port-rust-windows-ime-x64
+          path: |
+            target/release/port_rust_windows_ime.dll
+            target/release/registerhost.exe
+          if-no-files-found: error
+
+  msrv:
+    name: Declared minimum Rust version (1.82)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install 1.82.0 --profile minimal
+      - run: cargo +1.82.0 check --locked --all-targets
