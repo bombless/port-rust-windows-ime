@@ -110,5 +110,8 @@
   （参考实现里唯一的随机平局顺序被一行补丁固定为字母序，见脚本头注释）。
 - 上表所有测试在 CI 的 Ubuntu 与 Windows 上通过；Windows 上还有"注册 → `CoCreateInstance` → 反注册"的真实注册表与 COM 端到端检查。
 
+**变异检查**（一次性，已清理）：在临时分支里删掉 `cover_composition_range` 的 `ShiftEnd`（即重新引入 Go 注释里记载的 "你nin" bug），CI 里 12 个 Windows 测试同时失败，
+文档里出现 `尼nin`、`nininin` 之类的内容。说明假宿主的测试能抓住这类回归。
+
 **没有验证**：DLL 没有在任何真实应用里被 TSF 加载过。候选窗口的实际位置、DPI、多显示器、各类宿主（记事本、浏览器、Office、UWP、终端、密码框）下的行为，
 以及 ctfmon 的交互，都还需要真机验收，清单见 [PLAN.md](PLAN.md)。
