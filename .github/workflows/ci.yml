@@ -123,7 +123,10 @@ jobs:
 
             $profileKey = "$tip\LanguageProfile\0x00000804\$profile"
             if (-not (Test-Path $profileKey)) { throw "zh-CN language profile was not registered: $profileKey" }
-            if ((Get-Item $profileKey).GetValue('Description') -ne 'Rust Chinese Input Method') { throw "profile description is wrong" }
+            $profileValues = (Get-Item $profileKey).GetValueNames() | ForEach-Object { "$_=" + [string](Get-Item $profileKey).GetValue($_) }
+            Write-Host "::notice title=profile key values::$($profileValues -join '%0A')"
+            $description = (Get-Item $profileKey).GetValue('Description')
+            if ($description -ne 'Rust Chinese Input Method') { throw "profile description is '$description' (length $($description.Length)); values: $($profileValues -join ', ')" }
             Write-Host "TSF registration tree:"
             $tree = Get-ChildItem $tip -Recurse | ForEach-Object { $_.Name -replace '^.*CTF\\TIP\\', '' }
             $tree | ForEach-Object { "  " + $_ }
