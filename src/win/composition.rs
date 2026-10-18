@@ -22,7 +22,7 @@ use windows::Win32::UI::TextServices::{
 
 use super::service::{foreground_dpi, Core};
 use crate::diag::{guarded, text_for_log};
-use crate::session::{utf16_units, EditAction, Reply};
+use crate::session::{utf16_nul_terminated, utf16_units, EditAction, Reply};
 use crate::tip_log;
 
 /// Result of one edit session, read back by the caller once
@@ -294,12 +294,15 @@ impl EditSession_Impl {
                 }
             }
         }
-        let Some(units) = utf16_units(text) else {
+        // Counted length plus a NUL after it: TSF reads wide strings up to a NUL, so
+        // the buffer must have one even though the count is passed (see
+        // `utf16_nul_terminated`).
+        let Some(wide) = utf16_nul_terminated(text) else {
             tip_log!("StrategyTip composition text cannot be encoded for TSF");
             return false;
         };
-        let wide: Vec<u16> = text.encode_utf16().collect();
-        if let Err(error) = unsafe { range.SetText(ec, 0, &wide) } {
+        let units = wide.len() - 1;
+        if let Err(error) = unsafe { range.SetText(ec, 0, &wide[..units]) } {
             tip_log!("StrategyTip range SetText hr={}", hr_text(&error));
             return false;
         }
@@ -491,7 +494,9 @@ impl Core {
                     }
                 }
             }
-            if unsafe { range.SetText(ec, 0, &[]) }.is_err() {
+            // An empty slice would carry a dangling pointer; this one points at a NUL.
+            let nul = [0u16];
+            if unsafe { range.SetText(ec, 0, &nul[..0]) }.is_err() {
                 tip_log!("StrategyTip clearing the composition text failed");
             }
         }

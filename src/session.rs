@@ -102,6 +102,24 @@ pub fn utf16_units(text: &str) -> Option<usize> {
     }
 }
 
+/// UTF-16 of `text` followed by one NUL that is *not* part of the count, for
+/// handing to TSF together with `len() - 1`. `None` if `text` contains a NUL.
+///
+/// TSF reads wide strings up to a NUL whatever length it was given. Registering
+/// the profile name without one stored the name plus whatever happened to follow
+/// the buffer on the heap, in about one registration in eight (found by repeating
+/// the registration in CI). The Go port never saw it because its strings were C
+/// literals and `UTF16FromString` results, which always end in NUL. A zero-length
+/// request needs it too: an empty slice has a dangling pointer, this one has a NUL.
+pub fn utf16_nul_terminated(text: &str) -> Option<Vec<u16>> {
+    if text.contains('\0') {
+        return None;
+    }
+    let mut wide: Vec<u16> = text.encode_utf16().collect();
+    wide.push(0);
+    Some(wide)
+}
+
 /// Number of dictionary codes, for the activation log line.
 pub fn dictionary_summary() -> String {
     format!("embedded pinyin entries={}", dictionary().code_count())
@@ -515,6 +533,21 @@ mod tests {
         }
         // an embedded NUL cannot be encoded for TSF, so no range may be sized from it
         assert_eq!(utf16_units("ni\0"), None);
+    }
+
+    #[test]
+    fn strings_for_tsf_end_in_a_nul_that_is_not_counted() {
+        for text in ["", "ni", "\u{4f60}\u{597d}", "\u{1f600}", "Rust Chinese Input Method"] {
+            let wide = utf16_nul_terminated(text).unwrap();
+            let units = utf16_units(text).unwrap();
+            assert_eq!(wide.len(), units + 1, "{text:?}: the NUL comes after the counted units");
+            assert_eq!(wide[units], 0);
+            assert!(wide[..units].iter().all(|&unit| unit != 0), "no NUL inside the counted part");
+            assert_eq!(String::from_utf16(&wide[..units]).unwrap(), text);
+        }
+        assert_eq!(utf16_nul_terminated("a\0b"), None, "an embedded NUL cannot be represented");
+        // the empty case still points at real memory
+        assert_eq!(utf16_nul_terminated("").unwrap(), [0]);
     }
 
     // port of TestWrittenCompositionStartsEmptyAndFollowsEachWrite

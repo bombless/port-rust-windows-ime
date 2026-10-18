@@ -79,6 +79,11 @@
 9. **安装脚本**：`uninstall.ps1` 原先调用不存在的 `install.ps1`，已改为 `install-dll.ps1`；`registerhost.exe` 被拷到 `install\`，卸载不再依赖 `target\` 还在。
    `regsvr32` 在 Go 版上会以 `0xC0000409` 崩溃（Go 运行时的问题），Rust 版理论上不再有此问题，但安装器仍沿用 `registerhost`，因为它直接报告原始 HRESULT。
 
+10. **所有交给 TSF 的宽字符串都带 NUL 结尾**（`session::utf16_nul_terminated`）。TSF 的 `AddLanguageProfile` 读描述字符串时读到 NUL 才停，不管传了多长的 `cchDesc`：
+    最初的 Rust 实现传了不带 NUL 的缓冲区，约每 8 次注册就有 1 次把缓冲区后面的堆垃圾一起存进了语言栏显示的名字（CI 里重复注册 15 次抓到 2 次，长度 27/28 而不是 25，尾部是随机码点）。
+    Go 版没遇到，因为它传的都是 C 字符串字面量，后面恒为 NUL。`SetText` 的缓冲区和"清空文本"的零长度调用也按同样方式处理（空切片的指针是悬空的，现在指向一个 NUL）。
+    CI 现在每次都重复注册 30 次来守住这一点。
+
 ## 5. 原样继承、**没有**修改的问题
 
 - `Space` 与 `Enter` 都提交选中的候选，而不是 `Enter` 提交原始拼音。

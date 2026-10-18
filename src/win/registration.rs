@@ -20,6 +20,7 @@ use windows::Win32::UI::TextServices::{
 
 use super::{guid, this_module};
 use crate::guids::{guid_braced, CLSID_TEXT_SERVICE, LANG_ID_ZH_CN, PROFILE_GUID, SERVICE_NAME, TIP_CATEGORIES};
+use crate::session::utf16_nul_terminated;
 use crate::tip_log;
 
 fn clsid_key() -> String {
@@ -97,7 +98,9 @@ fn register_tip() -> Result<()> {
     // and would pass a dangling pointer for an empty one. The Go/C registration
     // passed NULL with a zero length; calling the vtable entry directly keeps
     // that exactly.
-    let name: Vec<u16> = SERVICE_NAME.encode_utf16().collect();
+    // NUL-terminated even though the length is passed too: TSF reads the name up
+    // to a NUL regardless (see `utf16_nul_terminated`).
+    let name = utf16_nul_terminated(SERVICE_NAME).expect("the service name has no NUL");
     let hr = unsafe {
         use windows::core::Interface;
         (Interface::vtable(&profiles).AddLanguageProfile)(
@@ -106,7 +109,7 @@ fn register_tip() -> Result<()> {
             LANG_ID_ZH_CN,
             &profile,
             PCWSTR(name.as_ptr()),
-            name.len() as u32,
+            (name.len() - 1) as u32,
             PCWSTR::null(),
             0,
             0,

@@ -151,7 +151,7 @@ jobs:
             # anything that depends on what happens to follow a buffer on the heap
             # shows up as an occasional wrong value, not as a deterministic failure.
             $wrong = @()
-            foreach ($i in 1..15) {
+            foreach ($i in 1..30) {
               & $registerHost register $dll
               if ($LASTEXITCODE -ne 0) { throw "registration $i failed: exit $LASTEXITCODE" }
               $stored = (Get-Item $profileKey).GetValue('Description')
@@ -161,8 +161,8 @@ jobs:
               & $registerHost unregister $dll
               if ($LASTEXITCODE -ne 0) { throw "unregistration $i failed: exit $LASTEXITCODE" }
             }
-            Write-Host "::notice title=repeated registration::15 registrations, $($wrong.Count) stored a wrong description"
-            if ($wrong.Count -gt 0) { throw "$($wrong.Count) of 15 registrations stored a wrong profile description: $($wrong -join '; ')" }
+            Write-Host "::notice title=repeated registration::30 registrations, $($wrong.Count) stored a wrong description"
+            if ($wrong.Count -gt 0) { throw "$($wrong.Count) of 30 registrations stored a wrong profile description: $($wrong -join '; ')" }
             if (Test-Path $profileKey) { Write-Warning "TSF profile key remains after unregister: $profileKey" }
           }
           catch {
